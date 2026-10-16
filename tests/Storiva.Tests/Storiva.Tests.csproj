@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0-windows so the icon renderer (GDI+) in Storiva.App can be tested too. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Storiva.Core\Storiva.Core.csproj" />
+    <ProjectReference Include="..\..\src\Storiva.Infrastructure\Storiva.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Storiva.App\Storiva.App.csproj" />
+    <!-- Loopback-only fake S3 endpoint (127.0.0.1) for SDK interop tests; no external network is used. -->
+    <ProjectReference Include="..\Storiva.FakeS3\Storiva.FakeS3.csproj" />
+  </ItemGroup>
+
+</Project>

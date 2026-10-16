@@ -1,0 +1,8 @@
+<Project>
+  <!-- Networking is confined to Storiva.Infrastructure (AWS SDK). Drop the SDK's implicit
+       "global using System.Net.Http" so any other use has to be explicit and visible in review.
+       Must live in a .targets file because the SDK adds implicit usings after .props files. -->
+  <ItemGroup>
+    <Using Remove="System.Net.Http" />
+  </ItemGroup>
+</Project>

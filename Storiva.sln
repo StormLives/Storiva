@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{019AFA41-80CA-4A84-9F5A-B52C7FA0D840}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Storiva.Core", "src\Storiva.Core\Storiva.Core.csproj", "{415896E6-C07D-490F-B142-0B03D623A499}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Storiva.Infrastructure", "src\Storiva.Infrastructure\Storiva.Infrastructure.csproj", "{4B2249CF-77E1-426B-AA66-5F7E5169BE4D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Storiva.App", "src\Storiva.App\Storiva.App.csproj", "{361E6605-1E66-42BA-8D61-4A8210270978}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{94B5CE65-E546-4FB3-B58F-68F3F386E975}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Storiva.Tests", "tests\Storiva.Tests\Storiva.Tests.csproj", "{CABD8A08-563A-475E-9B73-F29E25F19692}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Storiva.FakeS3", "tests\Storiva.FakeS3\Storiva.FakeS3.csproj", "{0C6214EE-2968-412A-82F0-345C1B3F5CAB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{415896E6-C07D-490F-B142-0B03D623A499}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{415896E6-C07D-490F-B142-0B03D623A499}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{415896E6-C07D-490F-B142-0B03D623A499}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{415896E6-C07D-490F-B142-0B03D623A499}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4B2249CF-77E1-426B-AA66-5F7E5169BE4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B2249CF-77E1-426B-AA66-5F7E5169BE4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B2249CF-77E1-426B-AA66-5F7E5169BE4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B2249CF-77E1-426B-AA66-5F7E5169BE4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{361E6605-1E66-42BA-8D61-4A8210270978}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{361E6605-1E66-42BA-8D61-4A8210270978}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{361E6605-1E66-42BA-8D61-4A8210270978}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{361E6605-1E66-42BA-8D61-4A8210270978}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CABD8A08-563A-475E-9B73-F29E25F19692}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CABD8A08-563A-475E-9B73-F29E25F19692}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CABD8A08-563A-475E-9B73-F29E25F19692}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CABD8A08-563A-475E-9B73-F29E25F19692}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C6214EE-2968-412A-82F0-345C1B3F5CAB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C6214EE-2968-412A-82F0-345C1B3F5CAB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C6214EE-2968-412A-82F0-345C1B3F5CAB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C6214EE-2968-412A-82F0-345C1B3F5CAB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{415896E6-C07D-490F-B142-0B03D623A499} = {019AFA41-80CA-4A84-9F5A-B52C7FA0D840}
+		{4B2249CF-77E1-426B-AA66-5F7E5169BE4D} = {019AFA41-80CA-4A84-9F5A-B52C7FA0D840}
+		{361E6605-1E66-42BA-8D61-4A8210270978} = {019AFA41-80CA-4A84-9F5A-B52C7FA0D840}
+		{CABD8A08-563A-475E-9B73-F29E25F19692} = {94B5CE65-E546-4FB3-B58F-68F3F386E975}
+		{0C6214EE-2968-412A-82F0-345C1B3F5CAB} = {94B5CE65-E546-4FB3-B58F-68F3F386E975}
+	EndGlobalSection
+EndGlobal

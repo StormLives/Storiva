@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+TestResults/
+*.binlog
+
+# Local builds, smoke-test captures, validation logs and screenshot working folders
+artifacts/
+
+# IDE and OS files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
+
+# Internal development notes (analysis of the reference layout, local validation logs with machine paths).
+# Kept on the developer's machine only; not part of the public repository.
+docs/internal/
+
+# Never commit credentials or local Storiva data
+connections.json
+secrets/
+*.pfx
+*.p12
+*.snk
+.env

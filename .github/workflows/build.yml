@@ -1,0 +1,111 @@
+# Builds, tests and publishes Storiva on every push and pull request.
+# A tag "vX.Y.Z" (matching <Version> in Directory.Build.props) also creates a DRAFT GitHub release with the zip.
+# Code signing (SignPath Foundation) is prepared below but disabled until the project is accepted; see README.md,
+# section "Code signing policy".
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Storiva.sln
+
+      - name: Build (Release, warnings are errors)
+        run: dotnet build Storiva.sln -c Release --no-restore
+
+      # Unit tests make no external calls: S3 behaviour is tested against an in-process fake server on 127.0.0.1.
+      # The two optional MinIO/AWS integration tests are skipped unless STORIVA_IT_* variables are set.
+      - name: Test
+        run: dotnet test Storiva.sln -c Release --no-build --logger trx --results-directory TestResults
+
+      - name: Publish (framework-dependent, win-x64)
+        run: dotnet publish src/Storiva.App/Storiva.App.csproj -c Release --no-restore -o publish
+
+      - name: Check that a release tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = $props.Project.PropertyGroup.Version
+          $tag = $env:GITHUB_REF_NAME.TrimStart('v')
+          if ($version -ne $tag) { throw "Tag $env:GITHUB_REF_NAME does not match <Version>$version</Version> in Directory.Build.props" }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+
+      - name: Upload unsigned build
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: storiva-win-x64
+          path: publish
+          if-no-files-found: error
+
+    outputs:
+      unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      # --- Code signing (enable after SignPath Foundation approves the project) ---------------------------------
+      # 1. Add the repository secret SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID,
+      #    SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG given by SignPath.
+      # 2. Uncomment the step below and replace the download step with the signed directory.
+      # Each signing request is approved manually in SignPath before the signed files come back.
+      #
+      # - name: Sign with SignPath
+      #   uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      #     project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+      #     signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+      #     github-artifact-id: ${{ needs.build.outputs.unsigned-artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: storiva
+      # -----------------------------------------------------------------------------------------------------------
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: storiva-win-x64
+          path: storiva
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path storiva/* -DestinationPath "Storiva-$env:GITHUB_REF_NAME-win-x64.zip"
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME "Storiva-$env:GITHUB_REF_NAME-win-x64.zip" --draft --generate-notes --title "Storiva $env:GITHUB_REF_NAME" --repo $env:GITHUB_REPOSITORY

@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Storiva.App</RootNamespace>
+    <AssemblyName>Storiva</AssemblyName>
+    <ApplicationIcon>Assets\Brand\storiva.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <ApplicationDefaultFont>Segoe UI, 9pt</ApplicationDefaultFont>
+    <!-- No .resx or binary serialization is used; keep the unsafe BinaryFormatter disabled. -->
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Icons\Lucide\*.svg" LogicalName="Storiva.Icons.%(Filename).svg" />
+    <EmbeddedResource Include="Assets\Brand\storiva.ico" LogicalName="Storiva.Brand.storiva.ico" />
+    <None Include="Assets\Icons\Lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" Link="licenses\lucide-LICENSE.txt" />
+    <None Include="..\..\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
+    <!-- AWS SDK for .NET (Apache-2.0) and System.Security.Cryptography.ProtectedData (MIT): license texts shipped with the app. -->
+    <None Include="Assets\Licenses\Apache-2.0.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\AWSSDK-Apache-2.0.txt" />
+    <None Include="Assets\Licenses\dotnet-ProtectedData-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\ProtectedData-MIT.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Storiva.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Storiva.Core\Storiva.Core.csproj" />
+    <ProjectReference Include="..\Storiva.Infrastructure\Storiva.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

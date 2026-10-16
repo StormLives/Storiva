@@ -1,0 +1,167 @@
+# Conexões reais (AWS S3, MinIO, endpoints S3 privados) e temas
+
+**Data:** 15/10/2026 · **Versão:** 0.2.0 · Fase 3
+
+Este documento registra a auditoria inicial, a arquitetura, as decisões e os riscos da Fase 3. Guias de uso:
+
+- [CONNECTION_SETUP.md](CONNECTION_SETUP.md): conexões, região, path-style, teste de conexão e TLS.
+- [CREDENTIAL_SECURITY.md](CREDENTIAL_SECURITY.md): armazenamento e limites da proteção.
+- [THEMES.md](THEMES.md): Claro, Escuro e Sistema.
+- [TESTING.md](TESTING.md): testes executados e como rodá-los.
+
+## 1. Auditoria do projeto antes da Fase 3
+
+| Área | Estado encontrado |
+| --- | --- |
+| Solução | `Storiva.Core` (net8.0), `Storiva.Infrastructure` (net8.0), `Storiva.App` (WinForms, net8.0-windows), `Storiva.Tests` (xUnit, 253 testes) |
+| Dados | Só `DemoStorageCatalog` e `DemoObjectDetails`, em memória e síncronos (`IStorageCatalog`, `IObjectDetailsStore`) |
+| Navegação | `BrowserNavigator` sobre `IStorageCatalog`; árvore com carregamento sob demanda; breadcrumb; voltar, avançar e subir |
+| Menus | `CommandCatalog` + `CommandRules` + `ShortcutRouter`; 41 itens "não disponíveis" |
+| Contas | `AccountRegistry`/`AccountValidator`: perfis só da sessão, **sem** credenciais, provedor real bloqueado |
+| Tarefas | `TaskQueue`: simulação determinística por `Tick` |
+| Abas | Oito abas ligadas ao `IObjectDetailsStore` demo (conteúdo fictício) |
+| Tema | Paleta clara única (`StorivaPalette.Light`) capturada em campos `readonly` em várias classes |
+| Persistência | Nenhuma (por decisão das fases 1 e 2) |
+| Rede | Proibida; um teste de isolamento garantia a ausência de `System.Net*` |
+
+**Real × simulado no início:** tudo era simulado ou local. Upload e download só criavam tarefas fictícias.
+
+## 2. Arquitetura
+
+```
+Storiva.App (WinForms)
+  MainForm (+ MainForm.Remote.cs, MainForm.Theme.cs)      ─ janela, comandos, abas
+  Dialogs/ConnectionDialog, ConnectionsDialog, OptionsDialog
+  Theme/ThemeService (IThemeService), ThemeApplier, NativeTheming, StorivaTabControl
+        │ usa apenas contratos do Core
+Storiva.Core (sem UI, sem rede)
+  Connections/  ConnectionProfile, ConnectionRules, StorageCredentials, ISecretStore,
+                IConnectionStore, ConnectionManager, ConnectionStatus, SecretRedactor
+  Remote/       IObjectStorageClient (+ fábrica), StorageError(Kind), RemoteStorageCatalog,
+                RemoteDetailsStore, RemoteOperations, LocalPathMapper
+  Storage/      IStorageCatalog (+ SwitchableStorageCatalog)
+  Tasks/        TaskQueue (só operações reais), OperationRunner
+  Settings/     AppSettings, ThemePreference, ThemeResolver, ISettingsStore
+        │ implementado por
+Storiva.Infrastructure (net8.0-windows)
+  S3/           S3ObjectStorageClient, S3ClientFactory, S3ErrorMapper   ← AWS SDK for .NET
+  Persistence/  JsonSettingsStore, JsonConnectionStore, StorivaDataPaths
+  Security/     DpapiSecretStore                                         ← ProtectedData (DPAPI)
+```
+
+### Como o modo real se encaixa sem reescrever a interface
+
+1. A janela continua falando com um `IStorageCatalog` e um `IObjectDetailsStore`, agora somente leitura e *comutáveis* (`SwitchableStorageCatalog`, `SwitchableDetailsStore`): vazios (`EmptyStorageCatalog`, `EmptyDetailsStore`) sem conexão, ou os da conexão aberta.
+2. Na conexão real, `RemoteStorageCatalog` é um **cache** do que já foi listado. Os membros síncronos só leem o cache; `LoadAsync` busca uma página de cada vez (no máximo 1000 itens, `ListObjectsV2` com delimitador `/`). Navegação, árvore, pesquisa, filtro e ordenação existentes funcionam sem mudança.
+3. As escritas passam só por `IObjectStorageClient`, de forma assíncrona: cada comando chama o método `Remote*` correspondente em `MainForm.Remote.cs`. Os contratos de catálogo e detalhes não têm métodos de escrita.
+4. As operações longas (upload, download, cópia, mover, excluir pasta, renomear, storage class) viram tarefas do `OperationRunner`: fila com limite de simultaneidade, cancelamento (`CancellationToken`), nova tentativa e progresso real. Esse progresso é limitado a cerca de 10 atualizações/s e é aplicado na thread da interface.
+5. As abas inferiores pedem os dados sob demanda: só o aspecto da aba visível é carregado (ACL, HEAD, tags, versões ou os primeiros 4 KB), com um intervalo de 250 ms para não disparar uma requisição por linha ao navegar com as setas.
+
+### `IObjectStorageClient`
+
+`TestConnectionAsync`, `ListBucketsAsync`, `GetBucketRegionAsync`, `ListObjectsAsync` (página), `ListAllObjectsAsync` (todas as páginas), `CreateBucketAsync`, `DeleteBucketAsync`, `CreateFolderAsync`, `UploadObjectAsync`, `DownloadObjectAsync`, `DeleteObjectAsync`, `DeleteObjectsAsync`, `CopyObjectAsync`, `MoveObjectAsync` (cópia + exclusão, com resultado parcial), `GetObjectMetadataAsync`, `ReadObjectStartAsync`, `GetAclAsync`, `GetTagsAsync`/`SetTagsAsync`, `GetVersioningAsync`/`SetVersioningAsync`, `ListVersionsAsync`.
+
+Todos os métodos são assíncronos, aceitam `CancellationToken` e, na falha, lançam `StorageOperationException` com um `StorageError` cuja mensagem não contém segredos.
+
+## 3. Decisões
+
+| # | Decisão | Motivo |
+| --- | --- | --- |
+| D-43 | AWS SDK for .NET **AWSSDK.S3 4.0.104** (+ AWSSDK.Core 4.0.102.8), Apache-2.0, pacotes com assinatura de repositório do NuGet.org | SDK oficial; assinatura SigV4, retries, multipart e TLS ficam com o SDK e o .NET |
+| D-44 | **System.Security.Cryptography.ProtectedData 8.0.0** (MIT, Microsoft, assinatura de autor e de repositório) para DPAPI | Mecanismo do Windows para segredos por usuário; não há gerenciador de senhas próprio |
+| D-45 | A Infrastructure passou a `net8.0-windows` | DPAPI só existe no Windows; o Storiva já era só para Windows |
+| D-46 | ~~Modo demo preservado como fonte separada ("Offline demo" no menu Accounts)~~ — **revogada por D-69** | Requisito da época: dados fictícios separados das conexões reais |
+| D-47 | O antigo `AccountRegistry`/`AddAccountDialog` (perfis sem credencial, só da sessão) foi **substituído** por `ConnectionManager` + `ConnectionDialog` + `ConnectionsDialog` | Dois modelos de conta confundiriam; os testes antigos foram trocados por testes de conexão |
+| D-48 | Credenciais: chave de acesso (DPAPI), **perfil AWS nomeado** (SSO e assume-role; só o nome é salvo) ou **cadeia padrão do SDK** (somente AWS) | Prioriza credenciais temporárias e perfis, sem obrigar a guardar chaves permanentes |
+| D-49 | A cadeia padrão é recusada para endpoints S3 compatíveis | Evita que credenciais AWS do ambiente sejam usadas com servidores de terceiros |
+| D-50 | O endpoint exige esquema explícito; `http://` só com o consentimento "Allow unencrypted HTTP"; sem usuário, path ou query na URL | Requisito de TLS por padrão e de validação de URL |
+| D-51 | **Nenhuma** personalização da validação de certificado (sem `ServerCertificateCustomValidationCallback`, `ServicePointManager` ou `DisableSSL`); um teste varre o código-fonte | Certificados inválidos nunca são aceitos em silêncio |
+| D-52 | S3 compatível: path-style ligado por padrão; checksums flexíveis (CRC) **desligados** por padrão (`RequestChecksumCalculation/ResponseChecksumValidation = WHEN_REQUIRED`); ambos configuráveis por conexão | Compatibilidade com MinIO e outros servidores que rejeitam os novos cabeçalhos de checksum do SDK v4 |
+| D-53 | AWS: um cliente por região de bucket. A região vem do `ListBuckets` (`BucketRegion`); diante de "região errada", o Storiva a descobre por `GetBucketLocation` e tenta **uma** vez | A primeira tentativa foi recusada, então nada foi alterado |
+| D-54 | O teste de conexão é só leitura: lista a primeira página de buckets. `AccessDenied` nessa listagem = "Conectado (permissões limitadas)", porque uma chave ou assinatura inválida produz outros códigos | Requisito: distinguir credenciais inválidas de permissões limitadas sem operações destrutivas |
+| D-55 | Exclusões **sempre** pedem confirmação (não há opção para desligar), nomeiam os itens e dizem se o versionamento torna a exclusão permanente | Requisito de confirmação de ações destrutivas |
+| D-56 | Excluir bucket só funciona com o bucket vazio; o Storiva nunca esvazia um bucket | Requisito: nenhuma exclusão recursiva de bucket |
+| D-57 | Mover = copiar tudo e só então excluir as origens. Falhas na cópia → nada é excluído. Falhas na exclusão → tarefa "Failed" informando que os objetos existem nos dois lugares | Requisito de falha parcial; nunca anunciar uma movimentação incompleta |
+| D-58 | Downloads gravam em `nome.storiva-partial` e só renomeiam ao terminar; a chave é mapeada para um caminho seguro (`..`, caracteres inválidos e nomes reservados neutralizados; o caminho final é sempre verificado dentro da pasta escolhida) | Interrupções não deixam arquivos truncados; chaves maliciosas não escapam da pasta |
+| D-59 | Progresso: porcentagem só quando o total é conhecido; caso contrário, barra listrada indeterminada e contagem | Requisito: nunca inventar uma porcentagem |
+| D-60 | ACL e headers reais são **somente leitura**; tags reais são editáveis, com Apply + confirmação; Versions só lista versões (Restore/Delete desabilitados) | Editar ACL ou headers exige semântica que o Storiva ainda não implementa (cópia do objeto); ACL ≠ políticas |
+| D-61 | Preview real: GET com `Range` dos primeiros 4 KB, mostrado como texto ou hex em `TextBox` (nunca renderizado nem executado); imagens, vídeo e áudio não são baixados para pré-visualização | Visualização segura |
+| D-62 | Listagens são paginadas ("Load more"). Depois de uma escrita, a recarga relê as páginas que estavam abertas (no máximo 10 a mais) | Buckets grandes nunca são carregados inteiros; a visão do usuário não volta para a primeira página |
+| D-63 | Persistência em `%LOCALAPPDATA%\Storiva` (não roaming): `settings.json` (tema), `connections.json` (sem segredos), `secrets\<id>.bin` (DPAPI) | Separação de configurações e segredos |
+| D-64 | Arquivos JSON versionados e gravados de forma atômica; corrompidos → renomeados `.corrupt-<data>` e padrões usados; versão futura → lidos e **nunca sobrescritos**; entradas inválidas ou desconhecidas → ignoradas com aviso | Requisito de arquivos corrompidos e versões |
+| D-65 | Importar ou carregar uma configuração nunca conecta. A sessão começa sempre desconectada (painel "Not connected"); só a ação do usuário (Connect, Test) abre uma conexão | Requisito: nenhuma conexão automática |
+| D-66 | Tema: `IThemeService` + `StorivaPalette.Current` + `ThemeApplier` (mapeia cada cor atribuída pelo seu papel na paleta e restaura os padrões do WinForms ao voltar ao claro) | Mudança em tempo de execução sem espalhar verificações de tema pelos formulários |
+| D-67 | Partes nativas: barra de título via `DWMWA_USE_IMMERSIVE_DARK_MODE` (documentado); barras de rolagem via `SetWindowTheme("DarkMode_Explorer")`; abas desenhadas pelo Storiva só no escuro (`StorivaTabControl`) | Sem transformar controles nativos em implementações frágeis; no claro, tudo continua nativo |
+| D-68 | Testes do SDK real contra um **servidor S3 falso em 127.0.0.1** (`tests/Storiva.FakeS3`), inclusive TLS com certificado não confiável | Nenhuma chamada a endpoints externos nos testes automatizados |
+| D-69 | **Modo demo removido** (15/10/2026, a pedido do usuário: "podemos tirar o modo demo, já terminamos"). Saíram `Infrastructure/Demo` (catálogo, detalhes e tarefas fictícias), os métodos de escrita de `IStorageCatalog`/`IObjectDetailsStore`, `HeaderRules`, as edições locais de ACL, a simulação da fila (`Tick`, Stop/Start, tarefas de exemplo), *Reset Demo Data*, *Pause Task Simulation* e as opções *Confirm before delete*, *Pause simulation* e *Verify simulated transfers*. Sem conexão, só Accounts, Options, Help e View funcionam; a lista mostra o painel "Not connected". Menu Accounts: as conexões salvas e "Disconnect from …"; Manage Accounts: botão *Disconnect* no lugar de *Use offline demo*. Os testes de navegação e listagem usam um catálogo em memória **só de teste** (`tests/Storiva.Tests/Fakes/InMemoryCatalog.cs`) | Pedido do usuário; elimina dados fictícios misturados a uma conexão real e o código duplicado de cada operação. Revoga D-46 |
+| D-70 | Campos de texto: borda plana e fixa (cor `BorderStrong` da paleta) pintada pelo Storiva em `WM_NCPAINT` (`Theme/InputBorders.cs`), sem a borda de destaque do Windows 11 ao focar ou passar o mouse. Os campos usam `BorderStyle.Fixed3D`, porque o controle de edição desenha a borda `FixedSingle` dentro da área do texto | Pedido do usuário (16/10/2026): "os input ficaram com um active com borda, não gostei, retire isso" |
+| D-71 | Preparação para o GitHub (15/10/2026): licença MIT, README em inglês e português com capturas de dados fictícios (`Storiva.exe --screenshot-tour`, `tools/capture-readme-screenshots.ps1`, servidor falso com `--sample`), CI no GitHub Actions e política de assinatura de código para a SignPath Foundation. Correções vistas nas capturas: o botão de overflow das barras (setinha quando os botões não cabem) era claro no tema escuro e agora segue a paleta; sem conexão, o foco do teclado caía no divisor e desenhava um pontilhado (agora vai para o painel de buckets, também ao desconectar); a aba Properties mostrava "(real data)", resto do modo demo, e agora mostra a linha "Connection"; os atalhos usam o foco lógico da janela, e não só o foco do Windows | Pedido do usuário: "vamos preparar o projeto para subirmos no github [...] pra gente poder pegar certificado [...] pra assinar o executável" |
+
+## 4. Sem conexão × conectado (estado final, após D-69)
+
+O modo demo foi removido (D-69). Tudo o que o Storiva mostra vem do servidor da conexão aberta.
+
+| Funcionalidade | Sem conexão | Conectado |
+| --- | --- | --- |
+| Lista e painel de buckets | Vazios; painel "Not connected" com links Connect / Add New Account.. / Manage Accounts.. | **Real**, paginada |
+| Upload, download, criar pasta, excluir, copiar, mover, renomear | Desabilitados | **Real** (upload via TransferUtility, multipart acima de 16 MB; download em streaming para arquivo parcial) |
+| Criar e excluir bucket; versionamento; Add External Bucket | Desabilitados | **Real** (excluir só se vazio; HEAD no bucket externo) |
+| Change Storage Class | Desabilitado | **Real** (AWS: STANDARD, INTELLIGENT_TIERING, STANDARD_IA, ONEZONE_IA, GLACIER_IR; servidores compatíveis: sem escolha) |
+| Permissions / Headers | Vazias | **Leitura** (ACL; HEAD + `x-amz-meta-*`) |
+| Tags | Vazia | **Leitura e escrita** (confirmada) |
+| Properties / Preview / Versions | Vazias | **Reais** (Preview: primeiros 4 KB; Versions: somente leitura) |
+| Fila de tarefas | Vazia ao iniciar (sem tarefas de exemplo) | **Real** (estado vindo da operação; Cancel, Retry, Clear finished, Cancel All) |
+| Accounts, Options, Help, temas | Funcionam | Funcionam |
+| 41 itens "não disponíveis" (policy, CORS, lifecycle, IAM, URLs assinadas…) | Desabilitados | Aviso ("Storiva does not implement it yet.") |
+
+## 5. Riscos e limitações conhecidos
+
+| Risco | Situação |
+| --- | --- |
+| **Escritas não testadas contra AWS nem contra MinIO real** | Contra o MinIO do usuário rodou apenas o teste de conexão, somente leitura (15/10/2026: conectado em 1,7 s, path-style, us-east-1). Nenhuma operação de escrita foi executada num servidor real, e a AWS não foi testada. A interoperabilidade das demais operações foi testada com o SDK real contra o servidor S3 falso em loopback, que verifica o ID da chave, mas **não** valida assinaturas. Os testes de integração para MinIO/AWS existem e ficam ignorados até serem configurados (ver TESTING.md) |
+| Multipart upload (> 16 MB) | Usa o TransferUtility do SDK. Não foi exercitado (o servidor falso não implementa multipart). Um upload multipart cancelado pode deixar partes pendentes no servidor; configure uma regra de ciclo de vida *AbortIncompleteMultipartUpload* |
+| Cópias > 5 GB | `CopyObject` tem limite de 5 GB; o Storiva não divide cópias e informa o erro |
+| DeleteObjects em servidores antigos | Alguns servidores exigem `Content-MD5`; o SDK v4 envia CRC32 nessa operação. Sintoma: erro "InvalidDigest"/"MissingContentMD5" |
+| Redirecionamento de região na AWS | Implementado (uma nova tentativa), mas não testado contra a AWS |
+| Pesquisa e filtro | Só sobre os itens já carregados (a barra de status avisa) |
+| Pastas com nome vazio ("a//b") | São exibidas como "(blank name)"; as operações usam a chave exata |
+| Detalhes após renomear | Relidos do servidor |
+| DPAPI | Protege contra outro usuário ou outro computador; **não** protege contra código rodando como o mesmo usuário (ver CREDENTIAL_SECURITY.md) |
+| Tema escuro | Algumas partes nativas continuam claras: caixas de mensagem, `TaskDialog`, seletores de arquivo, dicas de ferramenta, setas de combos. Ver THEMES.md |
+| Proxy | Usa o proxy do sistema por meio do .NET; não há configuração própria |
+
+## 6. Arquivos criados ou alterados na Fase 3
+
+- **Core (novos):**
+  - `Connections/ConnectionProfile.cs`, `Credentials.cs`, `ConnectionStatus.cs`, `ConnectionManager.cs`
+  - `Remote/IObjectStorageClient.cs`, `StorageErrors.cs`, `RemoteStorageCatalog.cs`, `RemoteDetailsStore.cs`, `RemoteOperations.cs`, `LocalPathMapper.cs`
+  - `Settings/AppSettings.cs`, `Tasks/OperationRunner.cs`
+- **Core (alterados):** `Storage/IStorageCatalog.cs` (+ `SwitchableStorageCatalog`, `MayHaveChildContainers`), `StorageItem.cs` (`Key`, `ETag`), `Tasks/TaskQueue.cs`, `TransferTask.cs`, `Commands/SelectionContext.cs`, `CommandRules.cs`, `CommandCatalog.cs` (textos), `Details/PreviewFormatter.cs`.
+- **Core (removido):** `Accounts/AccountProfile.cs` (D-47).
+- **Infrastructure (novos):** `S3/S3ObjectStorageClient.cs`, `S3ClientFactory.cs`, `S3ErrorMapper.cs`, `Persistence/StorivaDataFiles.cs`, `JsonStores.cs`, `Security/DpapiSecretStore.cs`; o `.csproj` ganhou os pacotes e o alvo `net8.0-windows`.
+- **App (novos):**
+  - `Main/MainForm.Remote.cs`, `MainForm.Theme.cs`, `SmokeTest.Remote.cs`
+  - `Dialogs/ConnectionDialog.cs`, `ConnectionsDialog.cs`
+  - `Theme/ThemeService.cs`, `ThemeApplier.cs`, `StorivaTabControl.cs`
+  - ícones `cloud.svg` e `server.svg`, `Assets/Licenses/`
+- **App (alterados):**
+  - `Program.cs`, `MainForm*.cs`
+  - `Details/DetailsTabs.cs`
+  - `Dialogs/OptionsDialog.cs`, `BucketDialogs.cs`, `StorivaDialog.cs`, `AboutDialog.cs`
+  - `Commands/UserPrompts.cs`, `MenuBuilder.cs`
+  - `Theme/StorivaTheme.cs`, `ControlStyles.cs`, `StorivaToolStripRenderer.cs`
+  - `SmokeTest.cs`, `Icons/LucideIcons.cs`
+- **App (removido):** `Dialogs/AddAccountDialog.cs` (D-47).
+- **Testes:**
+  - novo projeto `tests/Storiva.FakeS3`;
+  - em `tests/Storiva.Tests`: `ConnectionTests.cs`, `PersistenceTests.cs`, `ThemeTests.cs`, `RemoteCatalogTests.cs`, `RemoteOperationTests.cs`, `S3ClientTests.cs`, `IntegrationTests.cs`, `Fakes/InMemoryObjectStorageClient.cs`, `AssemblyInfo.cs`;
+  - `IconAndIsolationTests.cs` foi reescrito para a nova fronteira de rede;
+  - `AccountAndActivityTests.cs` virou `ActivityTests.cs`.
+- **Ferramentas:** `tools/validate.ps1` (servidor S3 falso para o smoke test e varredura de segredos), `Directory.Build.targets` (comentário).
+
+## 7. Remoção do modo demo (D-69) — arquivos
+
+- **Removidos:** `src/Storiva.Infrastructure/Demo/` (inteira).
+- **Core:** `Storage/IStorageCatalog.cs` (só leitura + `EmptyStorageCatalog`), `Details/ObjectDetails.cs` (só leitura + `EmptyDetailsStore`), `Details/DetailRules.cs` (`AclRules` reduzida, `HeaderRules` removida), `Remote/RemoteStorageCatalog.cs`, `RemoteDetailsStore.cs`, `Commands/CommandId.cs`, `CommandCatalog.cs`, `CommandRules.cs`, `SelectionContext.cs`, `Settings/SessionOptions.cs`, `Tasks/TaskQueue.cs`, `TransferTask.cs`, `Details/PreviewFormatter.cs`.
+- **App:** `Program.cs`, `Main/MainForm*.cs` (painel "Not connected", `Disconnect`), `Details/DetailsTabs.cs` (abas só com dados do servidor), `Dialogs/` (Bucket, NewFolder, KeyValue, Connections, Options, About), `SmokeTest*.cs`; novo `Theme/InputBorders.cs` (D-70).
+- **Testes:** novo `Fakes/InMemoryCatalog.cs`; `TaskQueueTests.cs` reescrito; Details, Listing, Navigation, Storage, Command e RemoteOperation adaptados; os testes dos dados demo foram removidos.
