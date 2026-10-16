@@ -238,7 +238,53 @@ public class LocalPathMapperTests
     [InlineData("CON", "_CON")]
     [InlineData("nul.txt", "_nul.txt")]
     [InlineData("trailing. ", "trailing")]
+    [InlineData("...", "_")]
+    [InlineData(". .", "_")]
+    [InlineData("CON .txt", "_CON .txt")]
+    [InlineData("aux.tar.gz", "_aux.tar.gz")]
+    [InlineData("com0", "_com0")]
+    [InlineData("LPT\u00B9.log", "_LPT\u00B9.log")]
+    [InlineData("CONOUT$", "_CONOUT$")]
+    [InlineData("console.txt", "console.txt")]
+    [InlineData("COM10", "COM10")]
+    [InlineData("C:", "C_")]
+    [InlineData("\\\\server\\share", "__server_share")]
+    [InlineData("tab\there\u0000", "tab_here_")]
+    [InlineData("invoice\u202Efdp.exe", "invoice_fdp.exe")]
+    [InlineData("a\u2066b\u2069c\u200F", "a_b_c_")]
     public void Names_are_made_safe_for_windows(string segment, string expected) => Assert.Equal(expected, LocalPathMapper.SafeName(segment));
+
+    [Fact]
+    public void Long_names_are_cut_without_trailing_dots_or_split_surrogates()
+    {
+        Assert.Equal(new string('a', 200), LocalPathMapper.SafeName(new string('a', 300)));
+        Assert.Equal(new string('a', 198), LocalPathMapper.SafeName(new string('a', 198) + ". " + new string('b', 50)));
+
+        var emoji = char.ConvertFromUtf32(0x1F600); // two UTF-16 units
+        var cut = LocalPathMapper.SafeName(new string('a', 199) + emoji + "tail");
+        Assert.Equal(new string('a', 199), cut);
+        Assert.False(char.IsHighSurrogate(cut[^1]));
+    }
+
+    [Theory]
+    [InlineData("/abs/path.txt")]
+    [InlineData("C:/Windows/system32/x.dll")]
+    [InlineData("\\\\?\\C:\\x")]
+    [InlineData("a/./../b")]
+    [InlineData(".../x")]
+    [InlineData("NUL/x.txt")]
+    public void Absolute_drive_and_device_keys_stay_inside_the_download_folder(string key)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "storiva-root");
+        var path = LocalPathMapper.ToLocalPath(root, key);
+        var fullRoot = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
+        Assert.StartsWith(fullRoot, path, StringComparison.OrdinalIgnoreCase);
+        Assert.All(path[fullRoot.Length..].Split(Path.DirectorySeparatorChar), segment =>
+        {
+            Assert.NotEqual("..", segment);
+            Assert.DoesNotContain(':', segment);
+        });
+    }
 
     [Theory]
     [InlineData("../../evil.exe")]
@@ -272,5 +318,8 @@ public class LocalPathMapperTests
         var root = Path.Combine(Path.GetTempPath(), "up");
         Assert.Equal("docs/up/sub/f.txt", LocalPathMapper.ToKey("docs/up/", root, Path.Combine(root, "sub", "f.txt")));
         Assert.Throws<ArgumentException>(() => LocalPathMapper.ToKey("x/", root, Path.Combine(Path.GetTempPath(), "other.txt")));
+        Assert.Throws<ArgumentException>(() => LocalPathMapper.ToKey("x/", root, Path.Combine(root, "..", "up-sibling.txt")));
+        Assert.Throws<ArgumentException>(() => LocalPathMapper.ToKey("x/", root, @"Z:\elsewhere\f.txt"));
+        Assert.Equal("x/..notes.txt", LocalPathMapper.ToKey("x/", root, Path.Combine(root, "..notes.txt")));
     }
 }

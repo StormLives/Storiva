@@ -36,6 +36,9 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
     /// <summary>Called during downloads after the first chunk (lets a test cancel or fail mid-transfer).</summary>
     public Action? OnDownloadChunk { get; set; }
 
+    /// <summary>Simulates a misbehaving server: ListAllObjectsAsync returns every key of the bucket, ignoring the prefix.</summary>
+    public bool ListAllIgnoresPrefix { get; set; }
+
     public bool Disposed { get; private set; }
 
     public void Put(string bucket, string key, byte[]? content = null)
@@ -120,7 +123,7 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
     public async IAsyncEnumerable<RemoteObject> ListAllObjectsAsync(string bucket, string prefix, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Gate($"ListAll {bucket}/{prefix}");
-        foreach (var (key, content) in Bucket(bucket).Where(o => o.Key.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+        foreach (var (key, content) in Bucket(bucket).Where(o => ListAllIgnoresPrefix || o.Key.StartsWith(prefix, StringComparison.Ordinal)).ToList())
         {
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Yield();

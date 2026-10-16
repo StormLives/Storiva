@@ -15,32 +15,50 @@ public enum ConflictPolicy
 /// </summary>
 public static class LocalPathMapper
 {
+    // Device names (also with superscript digits, which Windows treats like 1-3) and the console devices.
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³",
     };
 
     private static readonly char[] Invalid = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
+    private const int MaxNameLength = 200;
+
     /// <summary>A file or folder name Windows accepts, derived from one key segment.</summary>
     public static string SafeName(string segment)
     {
-        var chars = segment.Select(c => c < 32 || Invalid.Contains(c) ? '_' : c).ToArray();
-        var name = new string(chars).TrimEnd('.', ' ');
-        if (name.Length == 0 || name is "." or "..")
+        var chars = segment.Select(c => c < 32 || Invalid.Contains(c) || IsBidiControl(c) ? '_' : c).ToArray();
+        var name = new string(chars);
+        if (name.Length > MaxNameLength)
         {
-            name = "_" + name.Replace('.', '_');
+            // Cut before trimming, so the result never ends with a dot or a space; never split a surrogate pair.
+            name = name[..(char.IsHighSurrogate(name[MaxNameLength - 1]) ? MaxNameLength - 1 : MaxNameLength)];
         }
 
-        var stem = name.Split('.')[0];
+        name = name.TrimEnd('.', ' ');
+        if (name.Length == 0)
+        {
+            name = "_"; // "", ".", "..", "..." and names made only of dots and spaces
+        }
+
+        // Windows ignores trailing spaces of the stem when it matches device names ("CON .txt" is CON).
+        var stem = name.Split('.')[0].TrimEnd(' ');
         if (ReservedNames.Contains(stem))
         {
             name = "_" + name;
         }
 
-        return name.Length > 200 ? name[..200] : name;
+        return name;
     }
+
+    /// <summary>
+    /// Unicode direction overrides, isolates and marks. In a file name they can disguise the real extension
+    /// ("invoice" + U+202E + "fdp.exe" is shown as "invoiceexe.pdf"), so they are replaced.
+    /// </summary>
+    private static bool IsBidiControl(char c) => c is '‎' or '‏' or '؜' or (>= '‪' and <= '‮') or (>= '⁦' and <= '⁩');
 
     /// <summary>
     /// Local path for <paramref name="relativeKey"/> (key without the prefix being downloaded) below
@@ -95,7 +113,9 @@ public static class LocalPathMapper
     public static string ToKey(string prefix, string localRoot, string localFile)
     {
         var relative = Path.GetRelativePath(localRoot, localFile);
-        if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+        // ".." alone or as the first segment means outside; a file named "..notes" inside the folder is fine.
+        if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal) || relative == "." || Path.IsPathRooted(relative))
         {
             throw new ArgumentException("The file is not inside the selected folder.", nameof(localFile));
         }

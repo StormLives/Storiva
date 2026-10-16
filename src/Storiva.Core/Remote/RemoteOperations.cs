@@ -184,6 +184,13 @@ public static class RemoteOperations
                 continue; // folder markers have no content
             }
 
+            if (!obj.Key.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                // Only a misbehaving server lists keys outside the requested prefix; never map them into the folder.
+                failures.Add((obj.Key, "The server listed this key outside the folder being downloaded; it was skipped."));
+                continue;
+            }
+
             try
             {
                 var local = LocalPathMapper.ToLocalPath(localRoot, obj.Key[prefix.Length..]);

@@ -332,5 +332,19 @@ public class S3ErrorMapperTests
         Assert.Contains("flexible checksums", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("<Error><Code>PermanentRedirect</Code><Region>eu-west-1</Region></Error>", "eu-west-1")]
+    [InlineData("<Error><Region> ap-south-2 </Region></Error>", "ap-south-2")]
+    [InlineData("<Error><Region>evil.example/x</Region></Error>", null)]
+    [InlineData("<Error><Region>EU-WEST-1</Region></Error>", null)]
+    [InlineData("<Error><Region></Region></Error>", null)]
+    [InlineData("<Error><Code>PermanentRedirect</Code></Error>", null)]
+    public void Region_hints_from_responses_are_only_used_when_well_formed(string body, string? expected) =>
+        Assert.Equal(expected, S3ErrorMapper.RegionFromResponseBody(body));
+
+    [Fact]
+    public void Region_hint_is_null_without_a_response_body() =>
+        Assert.Null(S3ErrorMapper.RegionHint(new InvalidOperationException("wrapper", S3("PermanentRedirect", HttpStatusCode.MovedPermanently))));
+
     private sealed class HttpRequestExceptionWrapper(Exception inner) : Exception("wrapper", new System.Net.Http.HttpRequestException("send failed", inner));
 }

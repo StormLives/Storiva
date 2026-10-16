@@ -58,8 +58,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-AWS SDK for .NET (AWSSDK.S3 4.0.104, AWSSDK.Core 4.0.102.8)
------------------------------------------------------------
+AWS SDK for .NET (AWSSDK.S3 4.0.104.4, AWSSDK.Core 4.0.102.11)
+--------------------------------------------------------------
 Source:   https://github.com/aws/aws-sdk-net (NuGet packages AWSSDK.S3, AWSSDK.Core)
 License:  Apache License, Version 2.0
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.

@@ -79,11 +79,11 @@ Os ícones marcados com † aparecem na lista de derivados do Feather do arquivo
 
 | Pacote | Versão | Licença |
 | --- | --- | --- |
-| xunit | 2.5.3 | Apache-2.0 |
-| xunit.runner.visualstudio | 2.5.3 | Apache-2.0 |
-| Microsoft.NET.Test.Sdk | 17.8.0 | MIT |
+| xunit | 2.9.3 | Apache-2.0 |
+| xunit.runner.visualstudio | 4.0.1 | Apache-2.0 |
+| Microsoft.NET.Test.Sdk | 18.11.0 | MIT |
 
-As versões são as fixadas pelo template `xunit` do SDK 8.0.426. Foram restauradas do nuget.org e não fazem parte do executável publicado.
+As versões começaram com as do template `xunit` do SDK 8.0.426 e foram atualizadas em 16/10/2026 para as últimas estáveis (xunit continua na série 2.x; o `xunit.runner.visualstudio` 4.x executa testes xUnit v2 e suporta .NET 8). Licenças conferidas no `.nuspec` de cada pacote (expressões `Apache-2.0` e `MIT`, sem mudança). Foram restauradas do nuget.org e não fazem parte do executável publicado. A atualização também eliminou as dependências transitivas vulneráveis `System.Net.Http` 4.3.0 e `System.Text.RegularExpressions` 4.3.0 (vindas de `NETStandard.Library` 1.6.1 pelo xunit 2.5.3).
 
 ## 4. Fonte
 
@@ -93,9 +93,9 @@ Segoe UI é uma fonte do sistema Windows. Ela não é distribuída com o Storiva
 
 | Pacote | Versão | Licença | Autor | Procedência verificada |
 | --- | --- | --- | --- | --- |
-| AWSSDK.S3 | 4.0.104 (publicado em 30/09/2026) | Apache-2.0 | Amazon Web Services | nuget.org; `dotnet nuget verify`: assinatura de repositório do NuGet.org (válida até 18/05/2027); projeto https://github.com/aws/aws-sdk-net |
-| AWSSDK.Core | 4.0.102.8 (dependência mínima do AWSSDK.S3 4.0.104) | Apache-2.0 | Amazon Web Services | Idem |
-| System.Security.Cryptography.ProtectedData | 8.0.0 | MIT | Microsoft | nuget.org; assinaturas de autor (Microsoft) e de repositório; série 8.0, compatível com .NET 8 |
+| AWSSDK.S3 | 4.0.104.4 (atualizado em 16/10/2026; antes 4.0.104) | Apache-2.0 | Amazon Web Services | nuget.org; pacote com assinatura de repositório do NuGet.org (`.signature.p7s`). Na versão 4.0.104, `dotnet nuget verify` confirmou a assinatura (válida até 18/05/2027); para 4.0.104.4 o comando não foi executado. Projeto https://github.com/aws/aws-sdk-net |
+| AWSSDK.Core | 4.0.102.11 (dependência mínima do AWSSDK.S3 4.0.104.4; antes 4.0.102.8) | Apache-2.0 | Amazon Web Services | Idem |
+| System.Security.Cryptography.ProtectedData | 8.0.0 | MIT | Microsoft | nuget.org; assinaturas de autor (Microsoft) e de repositório; série 8.0, compatível com .NET 8 (é a única versão 8.x; as séries 9.x e 10.x existem, mas o projeto fica na série do runtime) |
 
 - Os textos das licenças acompanham o executável em `licenses\`:
   - `AWSSDK-Apache-2.0.txt`: texto oficial baixado de https://www.apache.org/licenses/LICENSE-2.0.txt, SHA-256 `cfc7749b96f63bd3…`;

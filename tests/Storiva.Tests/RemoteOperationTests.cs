@@ -146,6 +146,33 @@ public class RemoteOperationsTests
     }
 
     [Fact]
+    public async Task Prefix_download_skips_keys_a_server_lists_outside_the_prefix()
+    {
+        using var temp = new TempDataFolder();
+        var client = new InMemoryObjectStorageClient { ListAllIgnoresPrefix = true };
+        client.Put("b", "set/a.txt", [1]);
+        client.Put("b", "other/secret.txt", [2]);
+        client.Put("b", "s", [3]); // shorter than the prefix
+        var result = await RemoteOperations.DownloadPrefixAsync(client, "b", "set/", temp.Root, ConflictPolicy.KeepBoth, null, CancellationToken.None);
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(["other/secret.txt", "s"], result.Failures.Select(f => f.Key).Order(StringComparer.Ordinal));
+        Assert.Equal([Path.Combine(temp.Root, "a.txt")], Directory.GetFiles(temp.Root, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task Folder_upload_accepts_file_names_that_start_with_two_dots()
+    {
+        using var temp = new TempDataFolder();
+        var folder = Path.Combine(temp.Root, "cfg");
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "..notes.txt"), [1]);
+        var client = new InMemoryObjectStorageClient();
+        var result = await RemoteOperations.UploadFolderAsync(client, "b", string.Empty, folder, _ => null, null, CancellationToken.None);
+        Assert.Equal(1, result.Succeeded);
+        Assert.Equal(["cfg/..notes.txt"], client.Keys("b"));
+    }
+
+    [Fact]
     public async Task Folder_upload_uses_the_folder_name_and_relative_paths()
     {
         using var temp = new TempDataFolder();

@@ -85,7 +85,7 @@ public sealed class S3ObjectStorageClient : IObjectStorageClient
         var response = await RunAsync("Listing buckets", null, c => c.ListBucketsAsync(request, cancellationToken)).ConfigureAwait(false);
         var buckets = (response.Buckets ?? []).Select(b =>
         {
-            var region = NullIfEmpty(b.BucketRegion);
+            var region = ValidRegion(b.BucketRegion);
             if (region is not null)
             {
                 RememberRegion(b.BucketName, region);
@@ -99,7 +99,7 @@ public sealed class S3ObjectStorageClient : IObjectStorageClient
     public async Task<string?> GetBucketRegionAsync(string bucket, CancellationToken cancellationToken)
     {
         var response = await RunAsync("Opening the bucket", bucket, c => c.HeadBucketAsync(new HeadBucketRequest { BucketName = bucket }, cancellationToken)).ConfigureAwait(false);
-        var region = NullIfEmpty(response.BucketRegion);
+        var region = ValidRegion(response.BucketRegion);
         if (region is not null)
         {
             RememberRegion(bucket, region);
@@ -534,7 +534,7 @@ public sealed class S3ObjectStorageClient : IObjectStorageClient
             // GetBucketLocation can be asked from us-east-1 for any bucket the caller may read.
             var response = await ClientForRegion("us-east-1").GetBucketLocationAsync(new GetBucketLocationRequest { BucketName = bucket }).ConfigureAwait(false);
             var location = response.Location?.Value;
-            return string.IsNullOrEmpty(location) ? "us-east-1" : location == "EU" ? "eu-west-1" : location;
+            return string.IsNullOrEmpty(location) ? "us-east-1" : location == "EU" ? "eu-west-1" : ValidRegion(location);
         }
         catch (Exception ex) when (ex is AmazonServiceException or AmazonClientException or HttpRequestException)
         {
@@ -585,6 +585,9 @@ public sealed class S3ObjectStorageClient : IObjectStorageClient
         value is { } v ? new DateTimeOffset(v.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : v.ToUniversalTime()) : null;
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+    // Region names come from server responses and end up in endpoint host names: accept only well-formed codes.
+    private static string? ValidRegion(string? value) => !string.IsNullOrEmpty(value) && ConnectionRules.ValidateRegion(value) is null ? value : null;
 
     public void Dispose()
     {
