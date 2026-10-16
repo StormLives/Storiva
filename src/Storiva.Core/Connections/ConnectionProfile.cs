@@ -81,7 +81,8 @@ public sealed record ConnectionProfile
 
     /// <summary>Scheme, host and port only: user info, path and query of the URL are never shown.</summary>
     public static string SafeEndpointLabel(string? endpoint) =>
-        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) : "(no endpoint)";
+        // Not GetLeftPart(UriPartial.Authority): that keeps "user:password@".
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? $"{uri.Scheme}://{uri.Authority}" : "(no endpoint)";
 }
 
 public sealed record ConnectionValidationError(string Field, string Message);

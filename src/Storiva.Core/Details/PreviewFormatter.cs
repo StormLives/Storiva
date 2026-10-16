@@ -22,6 +22,8 @@ public static class PreviewFormatter
 {
     public const int SampleBytes = 4096;
 
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+
     private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".md", ".csv", ".html", ".css", ".js", ".sql", ".log", ".xml", ".yaml", ".yml", ".ini", ".conf", ".toml",
@@ -113,7 +115,7 @@ public static class PreviewFormatter
         try
         {
             using var document = JsonDocument.Parse(json);
-            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true }).ReplaceLineEndings("\r\n");
+            return JsonSerializer.Serialize(document.RootElement, IndentedJson).ReplaceLineEndings("\r\n");
         }
         catch (JsonException)
         {

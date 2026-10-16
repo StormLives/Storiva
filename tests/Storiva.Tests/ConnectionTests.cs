@@ -86,9 +86,15 @@ public class ConnectionRulesTests
         Assert.DoesNotContain(names, n => n.Contains("secret") || n.Contains("password") || n.Contains("token") || n.Contains("accesskey"));
     }
 
-    [Fact]
-    public void Endpoint_label_shows_only_scheme_host_and_port() =>
-        Assert.Equal("https://minio.example.internal:9000", ConnectionProfile.SafeEndpointLabel("https://minio.example.internal:9000"));
+    [Theory]
+    [InlineData("https://minio.example.internal:9000", "https://minio.example.internal:9000")]
+    [InlineData("https://AKIAEXAMPLE:s3cr3t@minio.example.internal:9000/bucket?X-Amz-Signature=abc#f", "https://minio.example.internal:9000")]
+    [InlineData("http://user@10.0.0.5/", "http://10.0.0.5")]
+    [InlineData("https://[::1]:9443", "https://[::1]:9443")]
+    [InlineData("not a url", "(no endpoint)")]
+    [InlineData(null, "(no endpoint)")]
+    public void Endpoint_label_shows_only_scheme_host_and_port(string? endpoint, string expected) =>
+        Assert.Equal(expected, ConnectionProfile.SafeEndpointLabel(endpoint));
 }
 
 public class SecretHandlingTests

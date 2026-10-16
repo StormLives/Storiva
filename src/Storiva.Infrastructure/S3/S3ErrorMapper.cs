@@ -132,7 +132,7 @@ public static class S3ErrorMapper
                 return Make(StorageErrorKind.NotSupported, $"{operation} is not supported by this server or for this item.");
             case "InvalidObjectState":
                 return Make(StorageErrorKind.Conflict, $"{operation} failed: the object is archived (e.g. Glacier) and must be restored first.");
-            case "EntityTooLarge" or "InvalidRequest" when serverText.Contains("copy", StringComparison.OrdinalIgnoreCase) && serverText.Contains("5", StringComparison.Ordinal):
+            case "EntityTooLarge" or "InvalidRequest" when serverText.Contains("copy", StringComparison.OrdinalIgnoreCase) && serverText.Contains('5'):
                 return Make(StorageErrorKind.NotSupported, $"{operation} failed: objects larger than 5 GB cannot be copied in one request; this version of Storiva does not split copies.");
             case "SlowDown" or "Throttling" or "ThrottlingException" or "RequestLimitExceeded" or "ServiceUnavailable" when status is 503 or 429:
                 return Make(StorageErrorKind.Throttled, $"{operation} was throttled by the server. Try again in a moment.");
@@ -163,18 +163,35 @@ public static class S3ErrorMapper
     {
         for (var e = exception; e is not null; e = e.InnerException)
         {
-            if (e is AmazonS3Exception s3 && s3.ResponseBody is { } body)
+            if (e is AmazonS3Exception s3 && RegionFromResponseBody(s3.ResponseBody) is { } region)
             {
-                var start = body.IndexOf("<Region>", StringComparison.Ordinal);
-                var end = body.IndexOf("</Region>", StringComparison.Ordinal);
-                if (start >= 0 && end > start)
-                {
-                    return body[(start + 8)..end];
-                }
+                return region;
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The &lt;Region&gt; element of an S3 error body. The value becomes part of an endpoint host name, so anything that
+    /// is not a well-formed region code is ignored.
+    /// </summary>
+    public static string? RegionFromResponseBody(string? body)
+    {
+        if (body is null)
+        {
+            return null;
+        }
+
+        var start = body.IndexOf("<Region>", StringComparison.Ordinal);
+        var end = body.IndexOf("</Region>", StringComparison.Ordinal);
+        if (start < 0 || end <= start)
+        {
+            return null;
+        }
+
+        var region = body[(start + 8)..end].Trim();
+        return ConnectionRules.ValidateRegion(region) is null ? region : null;
     }
 
     public static bool IsRegionMismatch(Exception exception) =>
