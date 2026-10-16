@@ -276,7 +276,7 @@ internal sealed partial class MainForm : Form
             CommandId.BucketCreate, CommandId.BucketDelete, CommandId.BucketRefresh, null,
             CommandId.BucketAddExternal, null,
             CommandId.BucketEditAcl, CommandId.BucketEditTags, CommandId.BucketEditVersioning, null,
-            CommandId.BucketDownloadAllTo, null, CommandId.BucketProperties,
+            CommandId.BucketDownloadAllTo, CommandId.BucketGenerateUrls, null, CommandId.BucketProperties,
         ], _renderer);
         _tree.ContextMenuStrip = _treeMenu;
 
@@ -330,6 +330,7 @@ internal sealed partial class MainForm : Form
             CommandId.FileRename, CommandId.FileDelete, null,
             CommandId.FileCreateFolder, CommandId.FileRefresh, null,
             CommandId.FileEditAcl, CommandId.FileEditHeaders, CommandId.FileEditTags, null,
+            CommandId.FileGenerateUrl, CommandId.CopyS3Uri, CommandId.CopyObjectUrl, null,
             CommandId.FileProperties,
         ], _renderer);
         _grid.ContextMenuStrip = _gridMenu;

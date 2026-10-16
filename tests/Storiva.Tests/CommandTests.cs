@@ -187,7 +187,7 @@ public class CommandCatalogTests
     [Fact]
     public void Remote_or_system_changing_operations_are_never_local()
     {
-        foreach (var id in new[] { CommandId.FileGenerateUrl, CommandId.BucketEditPolicy, CommandId.BucketMountDrive, CommandId.ToolsAccessManager,
+        foreach (var id in new[] { CommandId.BucketEditPolicy, CommandId.BucketMountDrive, CommandId.ToolsAccessManager,
                      CommandId.ToolsFolderSync, CommandId.HelpCheckUpdates, CommandId.ToolsDiagnostics })
         {
             Assert.Equal(CommandBehavior.Unavailable, CommandCatalog.Get(id).Behavior);

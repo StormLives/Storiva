@@ -307,6 +307,18 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
         return Task.FromResult<IReadOnlyList<ObjectVersion>>([new ObjectVersion("v2", DateTimeOffset.UnixEpoch, 2, "STANDARD", true, false), new ObjectVersion("v1", DateTimeOffset.UnixEpoch, 1, "STANDARD", false, false)]);
     }
 
+    /// <summary>A fake link (no signature) that records the call; like the real client it sends nothing.</summary>
+    public Task<PresignedUrl> CreatePresignedGetUrlAsync(string bucket, string key, TimeSpan validFor, CancellationToken cancellationToken)
+    {
+        Gate("Presign " + key);
+        ShareLinks.ValidateValidity(validFor);
+        var seconds = (long)validFor.TotalSeconds;
+        return Task.FromResult(new PresignedUrl(bucket, key, $"{GetObjectUrl(bucket, key)}?X-Amz-Expires={seconds}&X-Amz-Signature=fake", DateTimeOffset.UtcNow + validFor, false));
+    }
+
+    public string GetObjectUrl(string bucket, string key) =>
+        $"{(Profile.Endpoint ?? "https://fake.example.invalid").TrimEnd('/')}/{bucket}/{string.Join('/', key.Split('/').Select(Uri.EscapeDataString))}";
+
     public void Dispose() => Disposed = true;
 }
 

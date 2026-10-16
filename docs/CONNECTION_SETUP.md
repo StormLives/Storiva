@@ -108,4 +108,8 @@ As conexões usam as configurações de proxy do Windows por meio do .NET. O Sto
 
 ## 7. O que ainda não é suportado
 
-URLs pré-assinadas e "Generate Web URL", políticas de bucket, CORS, lifecycle, replicação, criptografia padrão, Object Lock, CloudFront, IAM, sincronização de pastas e "Mount as drive". Também não há edição de ACL ou de headers, restauração ou exclusão de versões, cópia de objetos maiores que 5 GB, limite de banda, importação ou exportação de conexões, nem tema de alto contraste.
+Links temporários (URLs pré-assinadas) já são suportados: Files › Generate Web URL.. (Ctrl+W) e Buckets › Generate Web URLs.., com validade de 15 min a 7 dias, gerados localmente pelo AWS SDK.
+
+Ainda não suportado:
+
+Políticas de bucket, CORS, lifecycle, replicação, criptografia padrão, Object Lock, CloudFront, IAM, sincronização de pastas e "Mount as drive". Também não há edição de ACL ou de headers, restauração ou exclusão de versões, cópia de objetos maiores que 5 GB, limite de banda, importação ou exportação de conexões, nem tema de alto contraste.

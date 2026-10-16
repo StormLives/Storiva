@@ -36,7 +36,10 @@ public static class CommandRules
             CommandId.FileEditAcl => c.SingleSelection,
             CommandId.FileEditHeaders => c.SingleSelection && c.FileCount == 1,
             CommandId.FileEditTags => c.SingleSelection && c.FileCount == 1,
-            CommandId.FileGenerateUrl => c.FileCount == 1 && c.SingleSelection,
+            // Links are signed per object: files only (a folder or bucket has no single URL to share).
+            CommandId.FileGenerateUrl or CommandId.CopyObjectUrl => c.FileCount > 0 && c.ContainerCount == 0,
+            // s3:// URIs exist for files, folders (prefixes) and buckets.
+            CommandId.CopyS3Uri => c.HasSelection,
             // Grey with an empty list in the reference [F E5].
             CommandId.FileSelectAll or CommandId.FileInvertSelection => c.ListCount > 0,
             CommandId.FileChangeStorageClass => c.FileCount > 0 && c.ContainerCount == 0,

@@ -485,6 +485,99 @@ public sealed class S3ObjectStorageClient : IObjectStorageClient
         return result.Take(max).ToList();
     }
 
+    // ---------- links ----------
+
+    public async Task<PresignedUrl> CreatePresignedGetUrlAsync(string bucket, string key, TimeSpan validFor, CancellationToken cancellationToken)
+    {
+        ShareLinks.ValidateValidity(validFor);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        var client = ClientFor(bucket);
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = bucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Protocol = UsesHttp ? Protocol.HTTP : Protocol.HTTPS,
+        };
+
+        try
+        {
+            // The SDK signs locally (SigV4 query string) with the client of the bucket's region; nothing is sent. It
+            // measures X-Amz-Expires from its own clock, corrected with the Date header of earlier responses, which
+            // can be a second or more behind this computer's: a link asked for exactly 7 days would then be refused
+            // (SigV4 allows at most 604800 s). A probe signature measures that offset first.
+            var target = (long)validFor.TotalSeconds;
+            var probe = await SignAsync(client, request, DateTime.UtcNow.AddSeconds(ProbeSeconds)).ConfigureAwait(false);
+            var offset = ExpiresSeconds(probe) - ProbeSeconds;
+            for (var attempt = 0; ; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string url;
+                try
+                {
+                    url = await SignAsync(client, request, DateTime.UtcNow + validFor - TimeSpan.FromSeconds(offset)).ConfigureAwait(false);
+                }
+                catch (ArgumentException) when (attempt < 2)
+                {
+                    offset++; // one second over the maximum after a second boundary
+                    continue;
+                }
+
+                var actual = ExpiresSeconds(url);
+                if (actual <= target || attempt >= 2)
+                {
+                    if (actual > ShareLinks.MaxValidity.TotalSeconds || actual <= 0)
+                    {
+                        throw new StorageOperationException(new StorageError(StorageErrorKind.RegionOrConfiguration,
+                            "Generating the link failed: the link could not be signed for the chosen time. Check this computer's clock and try again."));
+                    }
+
+                    var temporary = url.Contains("X-Amz-Security-Token=", StringComparison.Ordinal);
+                    return new PresignedUrl(bucket, key, url, DateTimeOffset.UtcNow.AddSeconds(actual), temporary);
+                }
+
+                offset += actual - target;
+            }
+        }
+        catch (Exception ex) when (ex is not StorageOperationException)
+        {
+            // Mapped to a safe message; no link is part of it.
+            throw S3ErrorMapper.Map(ex, "Generating the link", _raw, _isAws);
+        }
+    }
+
+    /// <summary>Validity of the calibration signature (well below the 7-day maximum whatever the clock offset).</summary>
+    private const int ProbeSeconds = 3600;
+
+    private static Task<string> SignAsync(AmazonS3Client client, GetPreSignedUrlRequest request, DateTime expires)
+    {
+        request.Expires = expires;
+        return client.GetPreSignedURLAsync(request);
+    }
+
+    /// <summary>X-Amz-Expires of a signed URL, in seconds.</summary>
+    internal static long ExpiresSeconds(string url)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(url, @"[?&]X-Amz-Expires=(\d+)");
+        return match.Success ? long.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    public string GetObjectUrl(string bucket, string key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Same endpoint rules as real requests (region, path-style or virtual-hosted), resolved locally by the SDK.
+        var endpoint = ClientFor(bucket).DetermineServiceOperationEndpoint(new GetObjectRequest { BucketName = bucket, Key = key });
+        var baseUrl = endpoint.URL.TrimEnd('/');
+        return baseUrl + "/" + EscapeKey(key);
+    }
+
+    /// <summary>Percent-encodes each segment of a key, keeping "/" as the separator (S3 URL path rules).</summary>
+    internal static string EscapeKey(string key) => string.Join('/', key.Split('/').Select(Uri.EscapeDataString));
+
+    private bool UsesHttp => !_isAws && Uri.TryCreate(Profile.Endpoint, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttp;
+
     // ---------- plumbing ----------
 
     /// <summary>

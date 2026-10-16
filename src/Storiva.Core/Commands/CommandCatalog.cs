@@ -81,7 +81,7 @@ public static class CommandCatalog
         Def(CommandId.BucketLifecycle, "Lifecycle Configuration..", "Ctrl+I", CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
         Def(CommandId.BucketCors, "CORS Configuration..", "Ctrl+R", CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
         Def(CommandId.BucketIntelligentTiering, "Intelligent Tiering Configuration..", "Ctrl+Shift+I", CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
-        Def(CommandId.BucketGenerateUrls, "Generate Web URLs..", "Ctrl+U", CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
+        Def(CommandId.BucketGenerateUrls, "Generate Web URLs..", "Ctrl+U", CommandBehavior.Local, null, ShortcutScope.Buckets, "F"),
         Def(CommandId.BucketChangeStorageClass, "Change Storage Class to ..", null, CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NotImplemented),
         Def(CommandId.BucketServerSideEncryption, "Server Side Encryption ..", null, CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
         Def(CommandId.BucketCloudFront, "CloudFront", null, CommandBehavior.Unavailable, null, ShortcutScope.Buckets, "F", NeedsProvider),
@@ -104,7 +104,7 @@ public static class CommandCatalog
         Def(CommandId.FileEditAcl, "Edit Permissions (ACL)", "Ctrl+L", CommandBehavior.OpensTab, null, ShortcutScope.Files, "F"),
         Def(CommandId.FileEditHeaders, "Edit HTTP Headers", "Ctrl+H", CommandBehavior.OpensTab, null, ShortcutScope.Files, "F"),
         Def(CommandId.FileEditTags, "Edit Object Tags", "Ctrl+T", CommandBehavior.OpensTab, null, ShortcutScope.Files, "F"),
-        Def(CommandId.FileGenerateUrl, "Generate Web URL..", "Ctrl+W", CommandBehavior.Unavailable, null, ShortcutScope.Files, "F", NeedsProvider),
+        Def(CommandId.FileGenerateUrl, "Generate Web URL..", "Ctrl+W", CommandBehavior.Local, null, ShortcutScope.Files, "F"),
         Def(CommandId.FileSelectAll, "Select All", "Ctrl+A", CommandBehavior.Local, null, ShortcutScope.Files, "F"),
         Def(CommandId.FileInvertSelection, "Invert Selection", "Ctrl+I", CommandBehavior.Local, null, ShortcutScope.Files, "F"),
         Def(CommandId.FileChangeStorageClass, "Change Storage Class to ..", null, CommandBehavior.Local, null, ShortcutScope.Files, "F"),
@@ -143,6 +143,8 @@ public static class CommandCatalog
         Def(CommandId.NavigateUp, "Up One Level", "Alt+Up", CommandBehavior.Local, "arrow-up", ShortcutScope.Global, "S"),
         Def(CommandId.Find, "Find..", "Ctrl+F", CommandBehavior.Local, "search", ShortcutScope.Global, "S"),
         Def(CommandId.EditPath, "Edit Location", "Alt+D", CommandBehavior.Local, "pencil", ShortcutScope.Global, "S"),
+        Def(CommandId.CopyS3Uri, "Copy S3 URI", null, CommandBehavior.Local, "copy", ShortcutScope.Files, "S"),
+        Def(CommandId.CopyObjectUrl, "Copy Object URL", null, CommandBehavior.Local, null, ShortcutScope.Files, "S"),
 
         // Help [H]
         Def(CommandId.HelpTopics, "Help Topics..", "F1", CommandBehavior.Local, "info", ShortcutScope.Global, "H"),
