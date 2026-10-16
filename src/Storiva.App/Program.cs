@@ -65,8 +65,10 @@ internal static class Program
     /// </summary>
     internal static MainForm CreateMainForm(StorivaDataPaths paths, ISystemThemeSource themeSource, out ConnectionManager connections)
     {
-        var theme = new ThemeService(new JsonSettingsStore(paths), themeSource);
+        // One settings.json session for the theme and the window layout, so neither overwrites the other's part.
+        var settings = new SettingsSession(new JsonSettingsStore(paths));
+        var theme = new ThemeService(settings, themeSource);
         connections = new ConnectionManager(new JsonConnectionStore(paths), new DpapiSecretStore(paths), new S3ClientFactory());
-        return new MainForm(new TaskQueue(), connections, new ActivityLog(), theme, S3ClientFactory.ListAwsProfileNames);
+        return new MainForm(new TaskQueue(), connections, new ActivityLog(), theme, S3ClientFactory.ListAwsProfileNames, settings);
     }
 }

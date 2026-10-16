@@ -328,6 +328,47 @@ internal static partial class SmokeTest
         await Wait(TasksSettled);
         Check("Download a folder keeps its structure", File.ReadAllText(Path.Combine(downloadRoot, "upload-folder", "nested", "two.txt")) == "two");
 
+        // Drag and drop from Explorer, through the real drag handlers (a DataObject with FileDrop; no mouse input).
+        var dropFile = Path.Combine(outputDir, "dropped-file.txt");
+        File.WriteAllText(dropFile, "dropped from Explorer");
+        var dropFolder = Path.Combine(outputDir, "dropped-folder");
+        Directory.CreateDirectory(dropFolder);
+        File.WriteAllText(Path.Combine(dropFolder, "inner.txt"), "inner");
+        Task<bool> DropDone() => Wait(() => form.LastDropUpload is { IsCompleted: true }, 20000);
+        var tasksBeforeDrop = form.RealTasks.Count;
+        var dropEffect = form.SimulateFileDrop([dropFile, dropFolder]);
+        await DropDone();
+        await Wait(TasksSettled);
+        await LoadAll();
+        Check("Drop a file and a folder on the list: Copy cursor, both uploaded into the current location (2 tasks)",
+            dropEffect == DragDropEffects.Copy && form.LastDropUpload?.Result == true && form.RealTasks.Count == tasksBeforeDrop + 2
+            && form.RealTasks.Skip(tasksBeforeDrop).All(t => t.State == TransferState.Completed) && form.VisibleNames.Contains("dropped-file.txt") && form.VisibleNames.Contains("dropped-folder"),
+            $"{dropEffect}, {string.Join(", ", form.RealTasks.Skip(tasksBeforeDrop).Select(t => $"{t.Name} {t.State}"))}");
+        prompts.ConfirmAnswer = false;
+        var replaceAsked = prompts.Shown.Count(p => p.Title == "Replace objects?");
+        var tasksBeforeReplace = form.RealTasks.Count;
+        form.SimulateFileDrop([dropFile]);
+        await DropDone();
+        prompts.ConfirmAnswer = true;
+        Check("Dropping a file that already exists asks before replacing it (declined: nothing queued)",
+            prompts.Shown.Count(p => p.Title == "Replace objects?") == replaceAsked + 1 && form.RealTasks.Count == tasksBeforeReplace && form.LastDropUpload?.Result == false);
+        var overEffect = form.SimulateFileDragOver([dropFile], StoragePath.Parse("storiva-empty"));
+        Check("dragging over a bucket in the bucket pane: Copy cursor, the bucket outlined, the status bar names the target",
+            overEffect == DragDropEffects.Copy && form.TreeDropHighlight == "storiva-empty" && form.StatusText == "Drop to upload into /storiva-empty/",
+            $"{overEffect}, {form.TreeDropHighlight ?? "(none)"}, {form.StatusText}");
+        var treeEffect = form.SimulateFileDrop([dropFile], StoragePath.Parse("storiva-empty"));
+        Check("…the outline goes away with the drop", treeEffect == DragDropEffects.Copy && form.TreeDropHighlight is null);
+        await DropDone();
+        await Wait(TasksSettled);
+        await LoadAll();
+        Check("Drop on a bucket in the bucket pane uploads to that bucket's root (and opens it)",
+            form.CurrentPath == StoragePath.Parse("storiva-empty") && form.VisibleNames.SequenceEqual(["dropped-file.txt"]), $"{form.CurrentPath.ToDisplayString()}: {string.Join(", ", form.VisibleNames)}");
+        form.ClickUp();
+        await Wait(() => !form.IsListing);
+        Check("At Home (only buckets) the list refuses drops", form.SimulateFileDrop([dropFile]) == DragDropEffects.None && form.LastDropUpload is null);
+        form.SubmitPathText("/storiva-smoke/");
+        await LoadAll();
+
         // Buckets: create (with versioning), versioning shown, delete when empty, open by name.
         Check("Create New Bucket on the server", await form.CreateRemoteBucketAsync("storiva-created", "us-east-1", versioning: true));
         await Wait(() => !form.IsListing && form.TreeRootNames.Contains("storiva-created"));
@@ -391,6 +432,8 @@ internal static partial class SmokeTest
             !form.IsConnected && form.TreeNodeCount == 0 && form.VisibleNames.Count == 0 && form.EmptyState.Shown
             && form.EmptyState.Links.Any(l => l.StartsWith("Connect to \"Smoke fake S3\"", StringComparison.Ordinal)),
             string.Join(" | ", form.EmptyState.Links));
+        Check("Disconnect: the connection used last is listed first and marked, but not reopened",
+            form.EmptyState.Links.FirstOrDefault()?.EndsWith("— last used", StringComparison.Ordinal) == true && !form.IsConnected, string.Join(" | ", form.EmptyState.Links));
         capture("20-disconnected.png");
         Check("Disconnect: the object list is replaced by the panel (no overlap)", !form.ObjectListShown);
         Check("connection status recorded in connections.json (no secrets)",

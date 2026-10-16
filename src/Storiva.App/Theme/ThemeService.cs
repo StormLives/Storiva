@@ -103,24 +103,25 @@ internal sealed class ManualThemeSource(bool? prefersDark = false) : ISystemThem
 
 internal sealed class ThemeService : IThemeService
 {
-    private readonly ISettingsStore _store;
+    private readonly SettingsSession _settings;
     private readonly ISystemThemeSource _system;
     private readonly SynchronizationContext? _context;
-    private AppSettings _settings;
-    private bool _readOnly;
 
     public ThemeService(ISettingsStore store, ISystemThemeSource system)
+        : this(new SettingsSession(store ?? throw new ArgumentNullException(nameof(store))), system)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+    }
+
+    /// <param name="settings">settings.json shared with the main window (window layout).</param>
+    public ThemeService(SettingsSession settings, ISystemThemeSource system)
+    {
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _system = system ?? throw new ArgumentNullException(nameof(system));
         _context = SynchronizationContext.Current;
 
-        var loaded = store.Load();
-        _settings = loaded.Value;
-        _readOnly = loaded.ReadOnly;
-        PersistenceWarning = loaded.Warnings.Count > 0 ? string.Join(" ", loaded.Warnings) : null;
+        PersistenceWarning = settings.LoadWarnings.Count > 0 ? string.Join(" ", settings.LoadWarnings) : null;
 
-        Preference = _settings.Theme;
+        Preference = settings.Current.Theme;
         SystemPrefersDark = system.PrefersDark();
         Effective = ThemeResolver.Resolve(Preference, SystemPrefersDark);
         Palette = For(Effective);
@@ -150,23 +151,12 @@ internal sealed class ThemeService : IThemeService
         }
 
         Preference = preference;
-        _settings = _settings with { Theme = preference };
-        if (_readOnly)
+        PersistenceWarning = _settings.Update(s => s with { Theme = preference }, out var error) switch
         {
-            PersistenceWarning = "The preference applies to this session; settings.json is not overwritten (it was written by a newer Storiva or could not be opened).";
-        }
-        else
-        {
-            try
-            {
-                _store.Save(_settings);
-                PersistenceWarning = null;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                PersistenceWarning = $"The theme could not be saved ({ex.GetType().Name}); it applies to this session only.";
-            }
-        }
+            SettingsSaveOutcome.ReadOnly => "The preference applies to this session; settings.json is not overwritten (it was written by a newer Storiva or could not be opened).",
+            SettingsSaveOutcome.Failed => $"The theme could not be saved ({error}); it applies to this session only.",
+            _ => null,
+        };
 
         Reevaluate();
     }

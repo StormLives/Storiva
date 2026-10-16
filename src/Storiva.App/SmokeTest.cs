@@ -199,6 +199,10 @@ internal static partial class SmokeTest
                 Check("not connected: accounts, Options and Help enabled",
                     E(CommandId.AccountAdd) && E(CommandId.AccountManage) && E(CommandId.ToolsOptions) && E(CommandId.HelpAbout));
                 Check("Accounts menu without saved connections says so", form.AccountMenuTexts.SequenceEqual(["(no saved connections — Add New Account..)"]), string.Join(" | ", form.AccountMenuTexts));
+                var offlineDrop = Path.Combine(outputDir, "offline-drop.txt");
+                File.WriteAllText(offlineDrop, "not uploaded");
+                Check("not connected: files dragged from Explorer are refused (no-drop cursor, nothing queued)",
+                    form.SimulateFileDrop([offlineDrop]) == DragDropEffects.None && form.LastDropUpload is null && form.TaskCount == 0);
 
                 // ---------- 3. Dialogs ----------
                 report.AppendLine("[dialogs]");
@@ -329,6 +333,9 @@ internal static partial class SmokeTest
                 {
                     report.AppendLine("SKIP  [remote] STORIVA_SMOKE_S3_* not set (run tools\\validate.ps1 to start the loopback fake S3 server)");
                 }
+
+                // ---------- 6. Remembered window layout (own data folders; this window keeps its fixed size) ----------
+                WindowLayoutSection(form, env, outputDir, Check, report);
 
                 form.WindowState = FormWindowState.Normal;
                 form.Size = new Size(form.MinimumSize.Width, form.MinimumSize.Height);

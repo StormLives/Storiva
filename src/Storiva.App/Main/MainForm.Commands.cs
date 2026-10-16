@@ -308,6 +308,8 @@ internal sealed partial class MainForm
             .AppendLine("  Alt+Left / Alt+Right / Alt+Up   Back / Forward / Up      Ctrl+F   Find      Alt+D   Edit location")
             .AppendLine("  Alt+O    Options")
             .AppendLine()
+            .AppendLine("Drag files or folders from Windows Explorer onto the list to upload them into the current location, or onto a bucket in the bucket pane to upload them there.")
+            .AppendLine()
             .AppendLine("Menu items shown in grey text open a \"not available\" notice and never execute anything.")
             .AppendLine()
             .AppendLine("Data: %LOCALAPPDATA%\\Storiva (settings.json, connections.json, secrets\\ protected with Windows DPAPI). See docs/CONNECTION_SETUP.md.");

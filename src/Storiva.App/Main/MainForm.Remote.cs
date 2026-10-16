@@ -184,6 +184,7 @@ internal sealed partial class MainForm
 
         _connections.RecordTest(id, result);
         SwitchTo(session, result.Status);
+        RememberLastConnection(id);
         _activity.Write($"Connected to \"{profile.Name}\" ({profile.Describe()}, {profile.AuthenticationLabel}). {result.Summary}",
             result.Status == ConnectionStatus.Connected ? ActivityLevel.Information : ActivityLevel.Warning);
         SetStatus(result.Summary);
@@ -552,14 +553,23 @@ internal sealed partial class MainForm
 
     private void RemoteUploadFiles()
     {
-        var (bucket, prefix) = RemoteLocation();
-        var location = _navigator.Current;
-        var files = Prompts.PickFilesToUpload(this, $"Upload files to {location.ToDisplayString()}");
+        var files = Prompts.PickFilesToUpload(this, $"Upload files to {_navigator.Current.ToDisplayString()}");
         if (files is null || files.Count == 0)
         {
             return;
         }
 
+        UploadLocalFiles(files);
+    }
+
+    /// <summary>
+    /// Queues one upload task per local file into the current location (chosen in the picker, or dropped from
+    /// Explorer). Asks before replacing objects with the same name; false when the user declined.
+    /// </summary>
+    private bool UploadLocalFiles(IReadOnlyList<string> files)
+    {
+        var (bucket, prefix) = RemoteLocation();
+        var location = _navigator.Current;
         var existing = _currentItems.Where(i => i.Kind == StorageItemKind.File).Select(RawName).ToHashSet(StringComparer.Ordinal);
         var clashes = files.Select(Path.GetFileName).Where(n => n is not null && existing.Contains(n)).ToList();
         if (clashes.Count > 0 && !Prompts.Confirm(this, "Replace objects?",
@@ -567,7 +577,7 @@ internal sealed partial class MainForm
                 string.Join("\r\n", clashes.Take(10)) + (clashes.Count > 10 ? $"\r\n… and {clashes.Count - 10} more" : string.Empty) +
                 "\r\n\r\nWith versioning enabled the previous content is kept as an older version. Continue?"))
         {
-            return;
+            return false;
         }
 
         foreach (var file in files)
@@ -593,23 +603,33 @@ internal sealed partial class MainForm
         }
 
         SetStatus($"{Plural(files.Count, "upload", "uploads")} queued. Progress is shown in the Tasks tab.");
+        return true;
     }
 
     private void RemoteUploadFolder()
     {
-        var (bucket, prefix) = RemoteLocation();
-        var location = _navigator.Current;
-        var folder = Prompts.PickFolder(this, $"Choose a folder to upload into {location.ToDisplayString()}");
+        var folder = Prompts.PickFolder(this, $"Choose a folder to upload into {_navigator.Current.ToDisplayString()}");
         if (folder is null)
         {
             return;
         }
 
+        UploadLocalFolder(folder);
+    }
+
+    /// <summary>
+    /// Queues the upload of a local folder (with everything below it) into the current location, as one task.
+    /// Asks first when a folder with that name already exists; false when the user declined.
+    /// </summary>
+    private bool UploadLocalFolder(string folder)
+    {
+        var (bucket, prefix) = RemoteLocation();
+        var location = _navigator.Current;
         var name = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar));
         if (_currentItems.Any(i => i.IsContainer && RawName(i) == name) && !Prompts.Confirm(this, "Upload folder",
                 $"A folder \"{name}\" already exists in {location.ToDisplayString()}. Files with the same relative path will be replaced. Continue?"))
         {
-            return;
+            return false;
         }
 
         StartRemoteOperation($"{location.ToDisplayString()}{name}/ (folder)", TransferKind.Upload, null, async (client, ctx) =>
@@ -617,6 +637,7 @@ internal sealed partial class MainForm
             var result = await RemoteOperations.UploadFolderAsync(client, bucket, prefix, folder, FileTypes.ContentType, ctx.Progress, ctx.CancellationToken);
             return result.HasFailures ? OperationOutcome.Partial(result.Summary + ": " + FirstFailure(result)) : OperationOutcome.Done(result.Summary);
         }, location);
+        return true;
     }
 
     private void RemoteDownload()
