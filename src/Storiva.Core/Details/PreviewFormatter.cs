@@ -22,7 +22,13 @@ public static class PreviewFormatter
 {
     public const int SampleBytes = 4096;
 
-    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+    // The preview is plain text in a text box (never HTML), so characters are shown as they are instead of the
+    // default \uXXXX escapes for non-ASCII letters and HTML-sensitive characters such as < and &.
+    private static readonly JsonSerializerOptions IndentedJson = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {

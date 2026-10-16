@@ -134,6 +134,14 @@ public class PreviewFormatterTests
     }
 
     [Fact]
+    public void Json_preview_shows_accents_and_html_characters_as_they_are()
+    {
+        var pretty = PreviewFormatter.PrettyJson("{\"nome\":\"São Paulo <b> & café\"}");
+        Assert.Contains("\"São Paulo <b> & café\"", pretty);
+        Assert.DoesNotContain("\\u", pretty);
+    }
+
+    [Fact]
     public void Build_notes_that_content_comes_from_the_server_and_is_truncated()
     {
         var result = PreviewFormatter.Build(FileNamed("big.zip", 10_000), _ => new byte[16]);
