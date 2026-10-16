@@ -55,6 +55,15 @@ public sealed class FakeS3Server : IAsyncDisposable
     /// <summary>Buckets that exist but are not returned by ListBuckets (e.g. owned by another account).</summary>
     public HashSet<string> HiddenBuckets { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Key → number of the next GET/PUT requests on it that answer 500 InternalError (retry tests).</summary>
+    public ConcurrentDictionary<string, int> FailingKeys { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Key → number of the next GETs on it whose connection drops after half of the body (announced with the full
+    /// Content-Length): a network failure in the middle of a download.
+    /// </summary>
+    public ConcurrentDictionary<string, int> TruncatedKeys { get; } = new(StringComparer.Ordinal);
+
     public void Start()
     {
         _listener.Start();
@@ -147,6 +156,12 @@ public sealed class FakeS3Server : IAsyncDisposable
                     await Task.Delay(delay, _stop.Token).ConfigureAwait(false);
                 }
 
+                if (request.Method == "GET" && response.Status == 200 && SplitPath(request.Path) is (_, { } cutKey) && Take(TruncatedKeys, cutKey))
+                {
+                    await WriteResponseAsync(stream, response, head: false, bodyLimit: response.Body.Length / 2).ConfigureAwait(false);
+                    return; // closes the connection in the middle of the body
+                }
+
                 await WriteResponseAsync(stream, response, request.Method == "HEAD").ConfigureAwait(false);
             }
         }
@@ -172,6 +187,11 @@ public sealed class FakeS3Server : IAsyncDisposable
 
         var (bucket, key) = SplitPath(r.Path);
         var q = r.Query;
+        if (key is not null && r.Method is "GET" or "PUT" && Take(FailingKeys, key))
+        {
+            return Error(500, "InternalError", "We encountered an internal error. Please try again.");
+        }
+
         try
         {
             if (bucket is null)
@@ -572,7 +592,20 @@ public sealed class FakeS3Server : IAsyncDisposable
     private static Response Error(int status, string code, string message) =>
         Xml(status, new XElement("Error", new XElement("Code", code), new XElement("Message", message), new XElement("RequestId", "fake-request")));
 
-    private static async Task WriteResponseAsync(Stream stream, Response response, bool head)
+    private static bool Take(ConcurrentDictionary<string, int> counts, string key)
+    {
+        while (counts.TryGetValue(key, out var left) && left > 0)
+        {
+            if (counts.TryUpdate(key, left - 1, left))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task WriteResponseAsync(Stream stream, Response response, bool head, int? bodyLimit = null)
     {
         var sb = new StringBuilder();
         sb.Append(CultureInfo.InvariantCulture, $"HTTP/1.1 {response.Status} {Reason(response.Status)}\r\n");
@@ -588,7 +621,7 @@ public sealed class FakeS3Server : IAsyncDisposable
         await stream.WriteAsync(Encoding.ASCII.GetBytes(sb.ToString())).ConfigureAwait(false);
         if (!head && response.Body.Length > 0)
         {
-            await stream.WriteAsync(response.Body).ConfigureAwait(false);
+            await stream.WriteAsync(response.Body.AsMemory(0, bodyLimit ?? response.Body.Length)).ConfigureAwait(false);
         }
 
         await stream.FlushAsync().ConfigureAwait(false);
@@ -605,6 +638,7 @@ public sealed class FakeS3Server : IAsyncDisposable
         405 => "Method Not Allowed",
         409 => "Conflict",
         416 => "Range Not Satisfiable",
+        500 => "Internal Server Error",
         _ => "Not Implemented",
     };
 

@@ -9,7 +9,8 @@ public sealed record BulkResult(int Succeeded, IReadOnlyList<(string Key, string
 /// <summary>
 /// Multi-object operations built on <see cref="IObjectStorageClient"/>. S3 "folders" are prefixes, so a folder
 /// operation is an operation on every object below it, listed page by page. Each method reports real progress and
-/// stops at cancellation; nothing is retried or deleted beyond what was asked.
+/// stops at cancellation; nothing is deleted beyond what was asked. Uploads and downloads retry an object after a
+/// transient failure (<see cref="TransferRetry"/>); nothing else is retried beyond the SDK's own request retries.
 /// </summary>
 public static class RemoteOperations
 {
@@ -126,12 +127,19 @@ public static class RemoteOperations
         return (copied, failures, total);
     }
 
+    /// <summary>Uploads one local file, retrying the whole file after a transient failure.</summary>
+    /// <param name="retry">Retry policy (one per operation); null = <see cref="TransferRetry.DefaultDelays"/>.</param>
+    public static Task UploadFileAsync(IObjectStorageClient client, string bucket, string key, string localPath, string? contentType, IProgress<TransferProgress>? progress, CancellationToken ct, TransferRetry? retry = null) =>
+        (retry ?? new TransferRetry()).RunAsync(p => client.UploadObjectAsync(bucket, key, localPath, contentType, p, ct), progress, ct);
+
     /// <summary>
     /// Downloads one object to <paramref name="localPath"/>: written to "name.storiva-partial" first and renamed only
-    /// when complete, so an interrupted download never leaves a truncated file under the real name.
+    /// when complete, so an interrupted download never leaves a truncated file under the real name. After a transient
+    /// failure the download starts over in the same partial file; when it finally fails, the partial file is removed.
     /// </summary>
+    /// <param name="retry">Retry policy (one per operation); null = <see cref="TransferRetry.DefaultDelays"/>.</param>
     /// <returns>The path written, or null when skipped because of <see cref="ConflictPolicy.Skip"/>.</returns>
-    public static async Task<string?> DownloadFileAsync(IObjectStorageClient client, string bucket, string key, string localPath, ConflictPolicy conflict, IProgress<TransferProgress>? progress, CancellationToken ct)
+    public static async Task<string?> DownloadFileAsync(IObjectStorageClient client, string bucket, string key, string localPath, ConflictPolicy conflict, IProgress<TransferProgress>? progress, CancellationToken ct, TransferRetry? retry = null)
     {
         var target = localPath;
         if (File.Exists(target))
@@ -152,7 +160,13 @@ public static class RemoteOperations
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             await using (var stream = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
             {
-                await client.DownloadObjectAsync(bucket, key, stream, progress, ct).ConfigureAwait(true);
+                await (retry ?? new TransferRetry()).RunAsync(async p =>
+                {
+                    // A retried attempt starts over: drop what the failed one wrote.
+                    stream.SetLength(0);
+                    stream.Position = 0;
+                    await client.DownloadObjectAsync(bucket, key, stream, p, ct).ConfigureAwait(true);
+                }, progress, ct).ConfigureAwait(true);
             }
 
             File.Move(partial, target, overwrite: true);
@@ -171,8 +185,10 @@ public static class RemoteOperations
     }
 
     /// <summary>Downloads every object below <paramref name="prefix"/> into <paramref name="localRoot"/>, keeping the folder structure.</summary>
-    public static async Task<BulkResult> DownloadPrefixAsync(IObjectStorageClient client, string bucket, string prefix, string localRoot, ConflictPolicy conflict, IProgress<TransferProgress>? progress, CancellationToken ct)
+    /// <param name="retry">Retry policy shared by every object; null = <see cref="TransferRetry.DefaultDelays"/>.</param>
+    public static async Task<BulkResult> DownloadPrefixAsync(IObjectStorageClient client, string bucket, string prefix, string localRoot, ConflictPolicy conflict, IProgress<TransferProgress>? progress, CancellationToken ct, TransferRetry? retry = null)
     {
+        retry ??= new TransferRetry();
         var done = 0;
         var skipped = 0;
         var failures = new List<(string, string)>();
@@ -195,8 +211,8 @@ public static class RemoteOperations
             {
                 var local = LocalPathMapper.ToLocalPath(localRoot, obj.Key[prefix.Length..]);
                 var start = bytes;
-                var inner = progress is null ? null : new SyncProgress(p => progress.Report(new TransferProgress(start + p.Transferred, null)));
-                var written = await DownloadFileAsync(client, bucket, obj.Key, local, conflict, inner, ct).ConfigureAwait(true);
+                var inner = progress is null ? null : new SyncProgress(p => progress.Report(new TransferProgress(start + p.Transferred, null) { Status = p.Status }));
+                var written = await DownloadFileAsync(client, bucket, obj.Key, local, conflict, inner, ct, retry).ConfigureAwait(true);
                 if (written is null)
                 {
                     skipped++;
@@ -223,8 +239,10 @@ public static class RemoteOperations
     }
 
     /// <summary>Uploads every file below <paramref name="localFolder"/> to <paramref name="prefix"/> + "folder name/" + relative path.</summary>
-    public static async Task<BulkResult> UploadFolderAsync(IObjectStorageClient client, string bucket, string prefix, string localFolder, Func<string, string?> contentType, IProgress<TransferProgress>? progress, CancellationToken ct)
+    /// <param name="retry">Retry policy shared by every file; null = <see cref="TransferRetry.DefaultDelays"/>.</param>
+    public static async Task<BulkResult> UploadFolderAsync(IObjectStorageClient client, string bucket, string prefix, string localFolder, Func<string, string?> contentType, IProgress<TransferProgress>? progress, CancellationToken ct, TransferRetry? retry = null)
     {
+        retry ??= new TransferRetry();
         var root = Path.GetFullPath(localFolder);
         var folderPrefix = prefix + LocalPathMapper.SafeName(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar))) + "/";
         var files = Directory.EnumerateFiles(root, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System })
@@ -240,8 +258,8 @@ public static class RemoteOperations
             var start = done;
             try
             {
-                var inner = progress is null ? null : new SyncProgress(p => progress.Report(new TransferProgress(start + p.Transferred, total)));
-                await client.UploadObjectAsync(bucket, key, file, contentType(file), inner, ct).ConfigureAwait(true);
+                var inner = progress is null ? null : new SyncProgress(p => progress.Report(new TransferProgress(start + p.Transferred, total) { Status = p.Status }));
+                await UploadFileAsync(client, bucket, key, file, contentType(file), inner, ct, retry).ConfigureAwait(true);
                 uploaded++;
             }
             catch (StorageOperationException ex) when (ex.Kind != StorageErrorKind.Canceled)

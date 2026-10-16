@@ -105,7 +105,7 @@ public sealed class OperationRunner
         {
             var next = _waiting.First!.Value;
             _waiting.RemoveFirst();
-            _queue.MarkRunning(next.Task, "In progress");
+            _queue.MarkRunning(next.Task, TransferTask.InProgressMessage, _clock());
             _ = RunAsync(next);
         }
     }
@@ -125,7 +125,7 @@ public sealed class OperationRunner
             progress.Flush();
             if (outcome.Success)
             {
-                _queue.Complete(task, outcome.Message);
+                _queue.Complete(task, outcome.Message + Summary(task));
             }
             else
             {
@@ -159,6 +159,20 @@ public sealed class OperationRunner
         }
 
         Finished?.Invoke(this, new OperationFinishedEventArgs(task, outcome, error));
+    }
+
+    /// <summary>" (2 min 3 s, 10.1 MB/s on average)" for an upload or download that took at least a second.</summary>
+    private string Summary(TransferTask task)
+    {
+        if (!TransferTask.MeasuresBytes(task.Kind) || task.StartedAt is not { } started || task.Processed <= 0)
+        {
+            return string.Empty;
+        }
+
+        var elapsed = _clock() - started;
+        return elapsed < TimeSpan.FromSeconds(1)
+            ? string.Empty
+            : $" ({TransferRate.FormatDuration(elapsed)}, {TransferRate.FormatSpeed(task.Processed / elapsed.TotalSeconds)} on average)";
     }
 
     private static bool IsCancellation(Exception ex, CancellationToken token) =>
@@ -199,6 +213,8 @@ public sealed class OperationRunner
     {
         private readonly object _gate = new();
         private TransferProgress? _latest;
+        private DateTimeOffset _latestAt; // when the latest value was reported (for the speed)
+        private string? _status; // kept until applied, even when newer values without a note arrive
         private DateTime _lastApplied = DateTime.MinValue;
         private bool _posted;
         private bool _stopped;
@@ -214,6 +230,8 @@ public sealed class OperationRunner
                 }
 
                 _latest = value;
+                _latestAt = owner._clock();
+                _status = value.Status ?? _status;
                 if (_posted)
                 {
                     return; // an update is already scheduled; it will pick up this value
@@ -242,6 +260,8 @@ public sealed class OperationRunner
         private void Apply()
         {
             TransferProgress? value;
+            DateTimeOffset at;
+            string? status;
             lock (_gate)
             {
                 _posted = false;
@@ -250,13 +270,14 @@ public sealed class OperationRunner
                     return;
                 }
 
-                value = _latest;
+                (value, at) = (_latest, _latestAt);
+                (status, _status) = (_status, null);
                 _lastApplied = DateTime.UtcNow;
             }
 
             if (value is { } v && task.State == TransferState.Running)
             {
-                owner._queue.ReportProgress(task, v.Transferred, v.Total);
+                owner._queue.ReportProgress(task, v.Transferred, v.Total, status, at);
             }
         }
 
@@ -264,14 +285,16 @@ public sealed class OperationRunner
         public void Flush()
         {
             TransferProgress? value;
+            DateTimeOffset at;
             lock (_gate)
             {
-                value = _latest;
+                (value, at) = (_latest, _latestAt);
+                _status = null; // the outcome message replaces any note
             }
 
             if (value is { } v)
             {
-                owner._queue.ReportProgress(task, v.Transferred, v.Total);
+                owner._queue.ReportProgress(task, v.Transferred, v.Total, at: at);
             }
         }
 

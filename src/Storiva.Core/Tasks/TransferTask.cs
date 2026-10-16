@@ -69,4 +69,37 @@ public sealed class TransferTask
     public bool Retryable { get; internal set; }
 
     public bool IsFinished => State is TransferState.Completed or TransferState.Canceled;
+
+    /// <summary>When the current (or last) run started; null while it never ran.</summary>
+    public DateTimeOffset? StartedAt { get; internal set; }
+
+    /// <summary>Smoothed speed of a running upload or download (bytes per second), from real progress only.</summary>
+    public double? BytesPerSecond => Rate.BytesPerSecond;
+
+    /// <summary>Time left at the current speed, when the total is known.</summary>
+    public TimeSpan? TimeRemaining => Rate.Remaining(Processed, Size);
+
+    /// <summary>
+    /// What the Tasks tab shows in the Message column: while an upload or download runs, its speed and time left
+    /// ("4.2 MB/s · 12 s left") followed by any note other than the plain "In progress" (e.g. a retry notice).
+    /// </summary>
+    public string DisplayMessage
+    {
+        get
+        {
+            if (State != TransferState.Running || CancelRequested || Rate.Describe(Processed, Size) is not { } live)
+            {
+                return Message;
+            }
+
+            return Message == InProgressMessage ? live : $"{live} · {Message}";
+        }
+    }
+
+    /// <summary>The message of a running operation that has nothing else to say.</summary>
+    public const string InProgressMessage = "In progress";
+
+    internal TransferRate Rate { get; } = new();
+
+    internal static bool MeasuresBytes(TransferKind kind) => kind is TransferKind.Upload or TransferKind.Download;
 }

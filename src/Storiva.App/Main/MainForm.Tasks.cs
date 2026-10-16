@@ -20,6 +20,7 @@ internal sealed partial class MainForm
 
     private readonly Dictionary<TaskFilter, ToolStripButton> _taskFilterButtons = new();
     private readonly Dictionary<int, TransferState> _lastTaskStates = new();
+    private readonly Dictionary<int, string> _lastTaskNotes = new();
     private readonly ToolStripMenuItem _taskCancel = new("&Cancel");
     private readonly ToolStripMenuItem _taskRetry = new("&Retry");
     private readonly ToolStripButton _taskClearFinished = new("Clear finished");
@@ -147,11 +148,15 @@ internal sealed partial class MainForm
         _taskClearFinished.Click += (_, _) => ReportBulk(_tasks.ClearFinished(), "removed from the list");
     }
 
-    /// <summary>Event log entries with "TaskID: n" for starts, completions, failures and cancellations [F format].</summary>
+    /// <summary>
+    /// Event log entries with "TaskID: n" for starts, completions, failures and cancellations [F format], and for the
+    /// notes of a running operation (retry notices).
+    /// </summary>
     private void LogTaskTransitions()
     {
         foreach (var task in _tasks.Tasks)
         {
+            LogTaskNote(task);
             var known = _lastTaskStates.TryGetValue(task.Id, out var previous);
             _lastTaskStates[task.Id] = task.State;
             if (!known || previous == task.State)
@@ -174,6 +179,27 @@ internal sealed partial class MainForm
                     _activity.Write($"{task.Kind}: {task.Name} — started.", taskId: task.Id);
                     break;
             }
+        }
+    }
+
+    private void LogTaskNote(TransferTask task)
+    {
+        if (task.State != TransferState.Running || task.CancelRequested)
+        {
+            _lastTaskNotes.Remove(task.Id);
+            return;
+        }
+
+        var seen = _lastTaskNotes.TryGetValue(task.Id, out var last);
+        if (task.Message == last)
+        {
+            return;
+        }
+
+        _lastTaskNotes[task.Id] = task.Message;
+        if (seen && task.Message != TransferTask.InProgressMessage)
+        {
+            _activity.Write($"{task.Kind}: {task.Name} — {task.Message}", ActivityLevel.Warning, task.Id);
         }
     }
 
@@ -230,7 +256,7 @@ internal sealed partial class MainForm
                 task.State.ToString(),
                 task.Kind.ToString(),
                 task.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC",
-                task.Message);
+                task.DisplayMessage); // running transfers: "4.2 MB/s · 12 s left", plus any retry notice
             var row = _taskGrid.Rows[index];
             row.Tag = task;
             row.Height = _taskGrid.RowTemplate.Height;

@@ -53,12 +53,16 @@ public readonly record struct TransferProgress(long Transferred, long? Total)
 {
     /// <summary>0–100 when the total is known; null for an indeterminate transfer.</summary>
     public int? Percent => Total is > 0 ? (int)Math.Clamp(Transferred * 100 / Total.Value, 0, 100) : Total == 0 ? 100 : null;
+
+    /// <summary>A short note that replaces the task message (e.g. "retrying 2/3…"); null keeps the current one.</summary>
+    public string? Status { get; init; }
 }
 
 /// <summary>
 /// Provider-neutral access to an object store. Every method is asynchronous, cancellable and throws
 /// <see cref="StorageOperationException"/> with a safe message on failure. No method retries a write on its own
-/// beyond the transport retries of the underlying SDK, and none deletes anything that was not asked for.
+/// beyond the transport retries of the underlying SDK (whole-object retries are <see cref="TransferRetry"/>'s, in
+/// <see cref="RemoteOperations"/>), and none deletes anything that was not asked for.
 /// </summary>
 public interface IObjectStorageClient : IDisposable
 {
