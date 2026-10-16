@@ -103,6 +103,52 @@ public class JsonStoreTests
     }
 
     [Fact]
+    public void Window_layout_and_last_connection_round_trip()
+    {
+        using var temp = new TempDataFolder();
+        var id = Guid.NewGuid();
+        var layout = new WindowLayout { X = -1200, Y = 40, Width = 1100, Height = 760, Maximized = true, NavigationPaneWidth = 300, TaskPanelHeight = 220, BottomTab = "Event log" };
+        new JsonSettingsStore(temp.Paths).Save(new AppSettings { Theme = ThemePreference.Dark, Window = layout, LastConnectionId = id });
+
+        var loaded = new JsonSettingsStore(temp.Paths).Load();
+        Assert.Empty(loaded.Warnings);
+        Assert.Equal(ThemePreference.Dark, loaded.Value.Theme);
+        Assert.Equal(layout, loaded.Value.Window);
+        Assert.Equal(id, loaded.Value.LastConnectionId);
+        var json = File.ReadAllText(temp.Paths.SettingsFile);
+        Assert.Contains("\"version\": 1", json, StringComparison.Ordinal); // additive fields: the format version is unchanged
+        Assert.DoesNotContain("secret", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("key", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Settings_written_before_the_window_layout_existed_still_load()
+    {
+        using var temp = new TempDataFolder();
+        File.WriteAllText(temp.Paths.SettingsFile, "{\n  \"format\": \"storiva-settings\",\n  \"version\": 1,\n  \"theme\": \"Dark\"\n}");
+        var result = new JsonSettingsStore(temp.Paths).Load();
+        Assert.Empty(result.Warnings);
+        Assert.False(result.ReadOnly);
+        Assert.Equal(ThemePreference.Dark, result.Value.Theme);
+        Assert.Null(result.Value.Window);
+        Assert.Null(result.Value.LastConnectionId);
+    }
+
+    [Theory]
+    [InlineData("{\"x\": 0, \"y\": 0, \"width\": -5, \"height\": 600}")]
+    [InlineData("{\"x\": 0, \"y\": 0, \"width\": 999999, \"height\": 600}")]
+    [InlineData("{\"x\": 0, \"y\": 0, \"width\": 900, \"height\": 600, \"navigationPaneWidth\": -1}")]
+    public void Implausible_window_geometry_is_dropped_and_the_theme_kept(string window)
+    {
+        using var temp = new TempDataFolder();
+        File.WriteAllText(temp.Paths.SettingsFile, $"{{\"version\": 1, \"theme\": \"Light\", \"window\": {window}, \"lastConnectionId\": \"00000000-0000-0000-0000-000000000000\"}}");
+        var result = new JsonSettingsStore(temp.Paths).Load();
+        Assert.Equal(ThemePreference.Light, result.Value.Theme);
+        Assert.Null(result.Value.Window);
+        Assert.Null(result.Value.LastConnectionId);
+    }
+
+    [Fact]
     public void Corrupt_settings_are_moved_aside_and_defaults_used()
     {
         using var temp = new TempDataFolder();

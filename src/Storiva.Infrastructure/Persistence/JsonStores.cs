@@ -4,7 +4,7 @@ using Storiva.Core.Settings;
 
 namespace Storiva.Infrastructure.Persistence;
 
-/// <summary>settings.json: theme preference only (no credentials, no account data).</summary>
+/// <summary>settings.json: theme preference, main window layout and the id of the last used connection (no credentials, no account data).</summary>
 public sealed class JsonSettingsStore : ISettingsStore
 {
     private readonly string _path;
@@ -37,7 +37,30 @@ public sealed class JsonSettingsStore : ISettingsStore
             }
 
             var theme = Enum.IsDefined(dto.Theme) ? dto.Theme : ThemePreference.System;
-            return new LoadResult<AppSettings>(new AppSettings { Theme = theme }, warnings, readOnly);
+            // Window and lastConnectionId are optional (files written by Storiva 0.3.0 have neither); implausible
+            // geometry from a damaged or hand-edited file is dropped and the default layout is used.
+            var window = dto.Window is { } w ? new WindowLayout
+            {
+                X = w.X,
+                Y = w.Y,
+                Width = w.Width,
+                Height = w.Height,
+                Maximized = w.Maximized,
+                NavigationPaneWidth = w.NavigationPaneWidth,
+                TaskPanelHeight = w.TaskPanelHeight,
+                BottomTab = w.BottomTab,
+            } : null;
+            if (window is not null && !WindowLayoutRules.IsPlausible(window))
+            {
+                window = null;
+            }
+
+            return new LoadResult<AppSettings>(new AppSettings
+            {
+                Theme = theme,
+                Window = window,
+                LastConnectionId = dto.LastConnectionId is { } id && id != Guid.Empty ? id : null,
+            }, warnings, readOnly);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
@@ -54,10 +77,28 @@ public sealed class JsonSettingsStore : ISettingsStore
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var dto = new SettingsDto { Version = AppSettings.CurrentVersion, Theme = settings.Theme };
+        var dto = new SettingsDto
+        {
+            Version = AppSettings.CurrentVersion,
+            Theme = settings.Theme,
+            Window = settings.Window is { } w ? new WindowDto
+            {
+                X = w.X,
+                Y = w.Y,
+                Width = w.Width,
+                Height = w.Height,
+                Maximized = w.Maximized,
+                NavigationPaneWidth = w.NavigationPaneWidth,
+                TaskPanelHeight = w.TaskPanelHeight,
+                BottomTab = w.BottomTab,
+            } : null,
+            LastConnectionId = settings.LastConnectionId,
+        };
         AtomicFile.WriteAllBytes(_path, JsonSerializer.SerializeToUtf8Bytes(dto, StorivaJson.Options));
     }
 
+    // New fields are optional, so the format version stays 1: older Storiva builds ignore them (unknown JSON
+    // properties are skipped) and keep reading the theme.
     private sealed class SettingsDto
     {
         public string Format { get; set; } = "storiva-settings";
@@ -65,6 +106,29 @@ public sealed class JsonSettingsStore : ISettingsStore
         public int Version { get; set; } = 1;
 
         public ThemePreference Theme { get; set; } = ThemePreference.System;
+
+        public WindowDto? Window { get; set; }
+
+        public Guid? LastConnectionId { get; set; }
+    }
+
+    private sealed class WindowDto
+    {
+        public int X { get; set; }
+
+        public int Y { get; set; }
+
+        public int Width { get; set; }
+
+        public int Height { get; set; }
+
+        public bool Maximized { get; set; }
+
+        public int? NavigationPaneWidth { get; set; }
+
+        public int? TaskPanelHeight { get; set; }
+
+        public string? BottomTab { get; set; }
     }
 }
 

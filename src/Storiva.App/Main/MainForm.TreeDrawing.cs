@@ -45,12 +45,20 @@ internal sealed partial class MainForm
         var row = new Rectangle(0, e.Bounds.Top, _tree.ClientSize.Width, e.Bounds.Height);
         var selected = (e.State & TreeNodeStates.Selected) != 0;
         var hot = (e.State & TreeNodeStates.Hot) != 0;
+        var dropTarget = node == _treeDropNode;
         var background = selected
             ? (_tree.Focused ? _palette.SelectionFocused : _palette.SelectionUnfocused)
-            : hot ? _palette.HoverFill : _palette.Surface;
+            : hot || dropTarget ? _palette.HoverFill : _palette.Surface;
         using (var brush = new SolidBrush(background))
         {
             g.FillRectangle(brush, row);
+        }
+
+        // Files dragged from Explorer over this bucket or folder: outlined, so the upload target is unambiguous.
+        if (dropTarget)
+        {
+            using var pen = new Pen(_palette.FocusRing);
+            g.DrawRectangle(pen, row.Left, row.Top, row.Width - 1, row.Height - 1);
         }
 
         // Visible keyboard focus: accent bar on the left of the selected row while the tree is focused.

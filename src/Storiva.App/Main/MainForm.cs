@@ -118,13 +118,16 @@ internal sealed partial class MainForm : Form
     private bool _layoutInitialized;
 
     /// <param name="awsProfiles">Lists AWS profile names for the connection dialog (names only), or null.</param>
+    /// <param name="settings">settings.json (window layout, last used connection); null keeps them in memory only.</param>
     public MainForm(
         TaskQueue tasks,
         ConnectionManager connections,
         ActivityLog activity,
         IThemeService theme,
-        Func<IReadOnlyList<string>>? awsProfiles = null)
+        Func<IReadOnlyList<string>>? awsProfiles = null,
+        SettingsSession? settings = null)
     {
+        _settings = settings ?? new SettingsSession(new InMemorySettingsStore());
         _catalog = new SwitchableStorageCatalog(EmptyStorageCatalog.Instance);
         _details = new SwitchableDetailsStore(EmptyDetailsStore.Instance);
         _tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
@@ -167,6 +170,7 @@ internal sealed partial class MainForm : Form
         // Created on the UI thread: task state changes of real operations are applied on this thread.
         _runner = new OperationRunner(_tasks);
         WireEvents();
+        WireFileDrop();
     }
 
     /// <summary>Confirmations and notices; replaced by a recorder in the smoke test.</summary>
@@ -475,6 +479,7 @@ internal sealed partial class MainForm : Form
     {
         base.OnLoad(e);
         ApplyDpiResources();
+        RestoreWindowBounds(); // before the panes are sized, so they fit the remembered window
         ApplySplitLayout();
         _layoutInitialized = true;
 
@@ -483,6 +488,7 @@ internal sealed partial class MainForm : Form
         RefreshTaskView();
         RefreshAccountStatus();
         SetFilter(ItemTypeFilter.All);
+        RestoreBottomTab();
         ThemeApplier.ApplyInitial(this);
         _activity.Write("Storiva started. No connection is opened until you choose one (Accounts menu).");
         foreach (var warning in _connections.LoadWarnings.Concat(_theme.PersistenceWarning is { } w ? [w] : []))
@@ -533,10 +539,12 @@ internal sealed partial class MainForm : Form
             split.Panel2MinSize = min2;
         }
 
-        var bottom = LogicalToDeviceUnits(Metrics.TaskPanelHeight);
+        // Pane sizes remembered from the last session (logical px), else the reference defaults; clamped as above.
+        var saved = _settings.Current.Window;
+        var bottom = LogicalToDeviceUnits(saved?.TaskPanelHeight ?? Metrics.TaskPanelHeight);
         var outerLength = _outerSplit.Height - _outerSplit.SplitterWidth;
         Configure(_outerSplit, LogicalToDeviceUnits(150), LogicalToDeviceUnits(120), outerLength - bottom);
-        Configure(_innerSplit, LogicalToDeviceUnits(140), LogicalToDeviceUnits(280), LogicalToDeviceUnits(Metrics.NavigationPaneWidth));
+        Configure(_innerSplit, LogicalToDeviceUnits(140), LogicalToDeviceUnits(280), LogicalToDeviceUnits(saved?.NavigationPaneWidth ?? Metrics.NavigationPaneWidth));
     }
 
     /// <summary>
@@ -638,10 +646,20 @@ internal sealed partial class MainForm : Form
         }
 
         _emptyConnections.Controls.Clear();
-        foreach (var connection in _connections.Connections.Take(8))
+        // The connection used last comes first, in bold: one click away, but never opened without that click.
+        var lastUsed = LastConnectionId;
+        foreach (var connection in _connections.Connections.OrderBy(c => c.Id == lastUsed ? 0 : 1).Take(8))
         {
             var id = connection.Id;
-            _emptyConnections.Controls.Add(EmptyStateLink($"Connect to \"{connection.Name}\" ({connection.Describe()})", () => _ = ConnectAsync(id)));
+            var isLast = id == lastUsed;
+            var link = EmptyStateLink($"Connect to \"{connection.Name}\" ({connection.Describe()}){(isLast ? LastUsedSuffix : string.Empty)}", () => _ = ConnectAsync(id));
+            if (isLast)
+            {
+                link.Font = StorivaFonts.UiBold;
+                link.AccessibleDescription = "The connection used last";
+            }
+
+            _emptyConnections.Controls.Add(link);
         }
 
         _emptyConnections.ResumeLayout();
