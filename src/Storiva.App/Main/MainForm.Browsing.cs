@@ -511,7 +511,7 @@ internal sealed partial class MainForm
     {
         try
         {
-            Clipboard.SetText(text);
+            ClipboardWriter(text, false);
             SetStatus(status);
         }
         catch (System.Runtime.InteropServices.ExternalException)

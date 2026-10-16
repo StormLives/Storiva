@@ -14,7 +14,8 @@ namespace Storiva.FakeS3;
 /// <summary>
 /// Minimal S3-compatible HTTP server on 127.0.0.1 for tests: path-style requests, the subset of the S3 API Storiva
 /// uses, aws-chunked uploads, configurable failures. It checks the access key ID in the SigV4 Authorization
-/// header but does not verify signatures (that is the SDK's job, tested by AWS). Never listens on other interfaces.
+/// header (or, for pre-signed GET URLs, X-Amz-Credential and the expiry) but does not verify signatures (that is the
+/// SDK's job, tested by AWS). Never listens on other interfaces.
 /// </summary>
 public sealed class FakeS3Server : IAsyncDisposable
 {
@@ -159,10 +160,29 @@ public sealed class FakeS3Server : IAsyncDisposable
     private Response Handle(Request r)
     {
         Requests.Enqueue($"{r.Method} {r.RawTarget}");
-        var auth = r.Header("authorization");
-        if (auth is null || !auth.Contains($"Credential={AccessKey}/", StringComparison.Ordinal))
+        var q = r.Query;
+        if (q.ContainsKey("X-Amz-Signature"))
         {
-            return Error(403, "InvalidAccessKeyId", "The AWS Access Key Id you provided does not exist in our records.");
+            // Pre-signed URL (SigV4 query string): reads only, and not after X-Amz-Date + X-Amz-Expires.
+            if (r.Method is not ("GET" or "HEAD") || !q.GetValueOrDefault("X-Amz-Credential", string.Empty).StartsWith(AccessKey + "/", StringComparison.Ordinal))
+            {
+                return Error(403, "InvalidAccessKeyId", "The AWS Access Key Id you provided does not exist in our records.");
+            }
+
+            if (!DateTimeOffset.TryParseExact(q.GetValueOrDefault("X-Amz-Date"), "yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var signedAt)
+                || !int.TryParse(q.GetValueOrDefault("X-Amz-Expires"), NumberStyles.None, CultureInfo.InvariantCulture, out var expires) || expires > 604800
+                || DateTimeOffset.UtcNow > signedAt.AddSeconds(expires))
+            {
+                return Error(403, "AccessDenied", "Request has expired");
+            }
+        }
+        else
+        {
+            var auth = r.Header("authorization");
+            if (auth is null || !auth.Contains($"Credential={AccessKey}/", StringComparison.Ordinal))
+            {
+                return Error(403, "InvalidAccessKeyId", "The AWS Access Key Id you provided does not exist in our records.");
+            }
         }
 
         if (RejectSignatures)
@@ -171,7 +191,6 @@ public sealed class FakeS3Server : IAsyncDisposable
         }
 
         var (bucket, key) = SplitPath(r.Path);
-        var q = r.Query;
         try
         {
             if (bucket is null)

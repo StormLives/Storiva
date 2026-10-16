@@ -146,6 +146,19 @@ public interface IObjectStorageClient : IDisposable
 
     /// <summary>Versions and delete markers of exactly <paramref name="key"/> (newest first, at most <paramref name="max"/>).</summary>
     Task<IReadOnlyList<ObjectVersion>> ListVersionsAsync(string bucket, string key, int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Pre-signed GET URL for <paramref name="key"/>, valid for <paramref name="validFor"/> (at most 7 days). Computed
+    /// locally with the connection's credentials, endpoint, region and addressing style: no request is sent to the
+    /// server. The result is a bearer credential and must never be logged.
+    /// </summary>
+    Task<PresignedUrl> CreatePresignedGetUrlAsync(string bucket, string key, TimeSpan validFor, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Plain (unsigned) URL of an object on this connection's endpoint. It only opens in a browser when the object is
+    /// public; it carries no credentials. Computed locally.
+    /// </summary>
+    string GetObjectUrl(string bucket, string key);
 }
 
 /// <param name="SourceDeleted">False when the copy exists but the source could not be removed.</param>

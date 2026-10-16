@@ -108,6 +108,7 @@ internal sealed partial class MainForm
             case CommandId.BucketEditTags: ShowBucketTab("Tags"); break;
             case CommandId.BucketProperties: ShowBucketTab("Properties"); break;
             case CommandId.BucketEditVersioning: RemoteEditVersioning(); break;
+            case CommandId.BucketGenerateUrls: RemoteGenerateBucketUrls(); break;
 
             // Files
             case CommandId.FileOpen: OpenCurrent(); break;
@@ -124,6 +125,7 @@ internal sealed partial class MainForm
             case CommandId.FileEditAcl: SelectDetailsTab("Permissions"); break;
             case CommandId.FileEditHeaders: SelectDetailsTab("Headers"); break;
             case CommandId.FileEditTags: SelectDetailsTab("Tags"); break;
+            case CommandId.FileGenerateUrl: RemoteGenerateUrls(); break;
             case CommandId.FileProperties: SelectDetailsTab("Properties"); break;
             case CommandId.FileSelectAll: SelectAll(); break;
             case CommandId.FileInvertSelection: InvertSelection(); break;
@@ -143,6 +145,8 @@ internal sealed partial class MainForm
             case CommandId.NavigateUp: _navigator.GoUp(); break;
             case CommandId.Find: FocusSearch(); break;
             case CommandId.EditPath: BeginPathEdit(); break;
+            case CommandId.CopyS3Uri: CopySelectionS3Uris(); break;
+            case CommandId.CopyObjectUrl: CopySelectionObjectUrls(); break;
 
             // Help
             case CommandId.HelpTopics: ShowHelpTopics(); break;
@@ -305,6 +309,7 @@ internal sealed partial class MainForm
             .AppendLine("  Ctrl+X/C/V   Cut / Copy / Paste")
             .AppendLine("  Ctrl+L / Ctrl+H / Ctrl+T   Permissions / HTTP headers / Tags tab")
             .AppendLine("  Ctrl+U / Ctrl+D   Upload / Download")
+            .AppendLine("  Ctrl+W   Generate Web URL (pre-signed link for the selected files; right-click for Copy S3 URI / Copy Object URL)")
             .AppendLine("  Alt+Left / Alt+Right / Alt+Up   Back / Forward / Up      Ctrl+F   Find      Alt+D   Edit location")
             .AppendLine("  Alt+O    Options")
             .AppendLine()

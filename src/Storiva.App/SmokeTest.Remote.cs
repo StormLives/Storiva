@@ -158,11 +158,75 @@ internal static partial class SmokeTest
         form.FocusList();
         form.SelectVisibleItem("readme.txt");
         var noticesBefore = prompts.Shown.Count;
-        form.Execute(CommandId.FileGenerateUrl);
+        form.Execute(CommandId.FileCopyTo);
         Check("an unavailable command shows the notice and executes nothing",
             prompts.Shown.Count == noticesBefore + 1 && prompts.Shown[^1].Title == "Not available" && prompts.Shown[^1].Message.Contains("Nothing was executed", StringComparison.Ordinal),
             prompts.Shown.Count > noticesBefore ? prompts.Shown[^1].Message.Split('\r')[0] : "no notice");
-        Check("…and logs a W entry", form.EventLogLines.Any(l => l.StartsWith("W [", StringComparison.Ordinal) && l.Contains("Generate Web URL", StringComparison.Ordinal)));
+        Check("…and logs a W entry", form.EventLogLines.Any(l => l.StartsWith("W [", StringComparison.Ordinal) && l.Contains("Copy to", StringComparison.Ordinal)));
+
+        // Sharing: pre-signed links and copy-address commands. The clipboard is replaced by a recorder from here on.
+        var copied = new List<(string Text, bool Sensitive)>();
+        form.ClipboardWriter = (text, sensitive) => copied.Add((text, sensitive));
+        var noticesAfter = prompts.Shown.Count;
+        var gridMenu = form.GridMenuItems();
+        bool InGridMenu(string text) => gridMenu.Any(i => i.Text == text && i.Enabled);
+        Check("list context menu: Generate Web URL.., Copy S3 URI, Copy Object URL enabled for a file",
+            E(CommandId.FileGenerateUrl) && InGridMenu("Generate Web URL..") && InGridMenu("Copy S3 URI") && InGridMenu("Copy Object URL"),
+            string.Join(", ", gridMenu.Where(i => i.Enabled).Select(i => i.Text)));
+        form.Execute(CommandId.CopyS3Uri);
+        Check("Copy S3 URI copies s3://bucket/key", copied.Count == 1 && copied[0] == ("s3://storiva-smoke/readme.txt", false), copied.LastOrDefault().Text ?? "nothing copied");
+        form.Execute(CommandId.CopyObjectUrl);
+        var plainUrl = endpoint.TrimEnd('/') + "/storiva-smoke/readme.txt";
+        Check("Copy Object URL copies the plain URL on the endpoint (path-style, no credentials)", copied.Count == 2 && copied[1] == (plainUrl, false), copied.LastOrDefault().Text ?? "nothing copied");
+        using (var share = form.CreateShareLinkDialogForSelection())
+        {
+            share!.Show(form);
+            await Wait(() => share.IsReady, 10000);
+            var first = share.Links.FirstOrDefault()?.Url ?? string.Empty;
+            Check("Generate Web URL: one pre-signed link, 1 hour by default, on the endpoint",
+                share.Links.Count == 1 && share.Validity == TimeSpan.FromHours(1) && first.StartsWith(plainUrl + "?", StringComparison.Ordinal)
+                && first.Contains("X-Amz-Expires=3600", StringComparison.Ordinal) && first.Contains("X-Amz-Signature=", StringComparison.Ordinal),
+                Regex.Replace(first, "X-Amz-(Signature|Credential)=[^&]+", "X-Amz-$1=..."));
+            Check("…the secret is not in the link", first.Length > 0 && !first.Contains(secret, StringComparison.Ordinal));
+            Check("…the dialog warns that anyone with the link can download until it expires", share.NoticeText.Contains("Anyone who has this link", StringComparison.Ordinal), share.NoticeText);
+            Check("…and shows the expiry and the unencrypted-HTTP note", share.StatusText.Contains("Expires", StringComparison.Ordinal) && share.StatusText.Contains("unencrypted HTTP", StringComparison.Ordinal), share.StatusText);
+            save(share, "21-dialog-share-link.png");
+            share.ChooseValidity(TimeSpan.FromDays(7));
+            await Wait(() => share.IsReady && share.Links[0].Url.Contains("X-Amz-Expires=604800", StringComparison.Ordinal), 10000);
+            Check("choosing 7 days signs a new link (X-Amz-Expires=604800, the SigV4 maximum)", share.IsReady && share.Links[0].Url.Contains("X-Amz-Expires=604800", StringComparison.Ordinal));
+            share.ClickCopy();
+            Check("Copy puts the link on the clipboard marked sensitive (kept out of the clipboard history)",
+                copied.Count == 3 && copied[2].Sensitive && share.Links.Count == 1 && copied[2].Text == share.Links[0].Url);
+            share.Close();
+        }
+
+        Check("Event log: \"Generated a link for <key> valid for 7 days\", never the link itself",
+            form.EventLogLines.Any(l => l.Contains("Generated a link for s3://storiva-smoke/readme.txt valid for 7 days", StringComparison.Ordinal))
+            && form.EventLogLines.All(l => !l.Contains("X-Amz-", StringComparison.Ordinal)));
+        form.SelectVisibleItem("data");
+        gridMenu = form.GridMenuItems();
+        Check("1 folder selected: Generate Web URL and Copy Object URL disabled, Copy S3 URI enabled",
+            !E(CommandId.FileGenerateUrl) && !InGridMenu("Copy Object URL") && InGridMenu("Copy S3 URI"));
+        form.Execute(CommandId.CopyS3Uri);
+        Check("Copy S3 URI of a folder is its prefix", copied.Count == 4 && copied[3].Text == "s3://storiva-smoke/data/", copied.LastOrDefault().Text ?? "nothing copied");
+        Check("Buckets › Generate Web URLs.. is enabled for the bucket", E(CommandId.BucketGenerateUrls));
+        using (var bucketShare = await form.PrepareBucketShareLinksAsync())
+        {
+            bucketShare?.Show(form);
+            await Wait(() => bucketShare?.IsReady == true, 10000);
+            var keys = bucketShare?.Links.Select(l => l.Key).ToList() ?? [];
+            Check("Generate Web URLs (bucket): one link per file of the bucket, folder markers left out",
+                keys.Count >= 8 && keys.Contains("readme.txt") && keys.Contains("data/config.json") && !keys.Any(k => k.EndsWith('/')), $"{keys.Count} link(s)");
+            if (bucketShare is not null)
+            {
+                save(bucketShare, "22-dialog-share-bucket.png");
+                bucketShare.Close();
+            }
+        }
+
+        Check("…logged without the links, and no sharing command showed a notice",
+            form.EventLogLines.Any(l => l.Contains("links for files of s3://storiva-smoke/", StringComparison.Ordinal)) && form.EventLogLines.All(l => !l.Contains("X-Amz-", StringComparison.Ordinal))
+            && prompts.Shown.Count == noticesAfter, string.Join(" | ", prompts.Shown.Skip(noticesAfter).Select(p => p.Title)));
 
         // Details from the server.
         form.SelectVisibleItem("readme.txt");

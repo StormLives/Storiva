@@ -95,6 +95,8 @@ public enum CommandId
     NavigateUp,
     Find,
     EditPath,
+    CopyS3Uri,
+    CopyObjectUrl,
 
     // Help [H]
     HelpTopics,
