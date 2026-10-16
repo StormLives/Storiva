@@ -66,6 +66,7 @@
 - Paginated listings (**Load more**), breadcrumb path, back / forward / up, editable path field.
 - Local search, type filter and sorting on every column.
 - Bookmarks for buckets and folders.
+- **Drag and drop** files and folders from Windows Explorer onto the object list (uploads to the current folder) or onto a bucket in the left pane.
 - Object names with unusual characters are preserved exactly.
 
 ### Operations
@@ -77,7 +78,17 @@ All operations run in the **Tasks** tab with real progress, cancel and retry:
 - create folder, delete, copy, cut/paste (move), rename and change storage class;
 - create and delete buckets, add an external bucket by name, edit versioning.
 
+Running transfers show their **speed and time left** ("4.2 MB/s · 12 s left"); finished ones show the duration and average speed. After a network drop, throttling or a server error, an object is **retried automatically** (up to 3 attempts, 2 s and 8 s apart; never for credential or permission errors), and a download restarts cleanly in its partial file.
+
 Deletes always ask for confirmation. Deleting a bucket only works when it is empty: Storiva never deletes a bucket recursively.
+
+### Sharing
+
+- **Files › Generate Web URL..** (Ctrl+W): a temporary **pre-signed link** for the selected files, valid for 15 min, 1 h, 24 h or 7 days. Anyone with the link can download the file until it expires, without an account. The link is computed on your computer by the AWS SDK (nothing is sent to the server), is never written to the Event log or saved, and Copy keeps it out of the Windows clipboard history.
+- **Buckets › Generate Web URLs..**: links for every file of a bucket (up to 1,000).
+- Right-click › **Copy S3 URI** (`s3://bucket/key`) and **Copy Object URL** (the plain HTTPS address, which opens only for public objects).
+
+![Generate Web URL dialog with a one-hour pre-signed link](docs/images/storiva-share-link.png)
 
 ### Details tabs
 
@@ -95,6 +106,7 @@ Deletes always ask for confirmation. Deleting a bucket only works when it is emp
 
 - **Light, Dark and System** themes. *System* follows the Windows setting live, including the title bar and scroll bars.
 - High DPI aware (PerMonitorV2), keyboard shortcuts for every main command, accessible names on controls.
+- Remembers the window size and position, the pane sizes and the selected tab. The last used connection is shown first in the *Not connected* panel; Storiva still never connects on its own.
 - Icons from [Lucide](https://lucide.dev); original application icon.
 
 ![Options › Interface: theme and layout settings](docs/images/storiva-options-interface.png)
@@ -159,6 +171,7 @@ Storiva has **no telemetry, no analytics, no crash reporting and no update check
 - Plain `http://` endpoints require an explicit opt-in per connection and show a warning.
 - Secrets are stored separately from settings, encrypted with DPAPI, and never written to logs, error messages, JSON files or command lines.
 - Destructive actions ask for confirmation; buckets are never deleted recursively.
+- Downloaded file names are sanitized: no path traversal outside the chosen folder, no reserved Windows device names (`CON`, `COM1`…), and Unicode direction-control characters that could disguise an extension (`….exe` shown as `….pdf`) are replaced.
 - S3 requests are made only through the official [AWS SDK for .NET](https://github.com/aws/aws-sdk-net); Storiva has no hand-written request signing.
 
 Details and limits: [docs/CREDENTIAL_SECURITY.md](docs/CREDENTIAL_SECURITY.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
@@ -180,6 +193,7 @@ When the same shortcut exists in **Files** and **Buckets**, the focused pane dec
 | Add External Bucket / Edit Versioning | Ctrl+E / Ctrl+Shift+V |
 | Options | Alt+O |
 | Back / Forward / Up | Alt+← / Alt+→ / Alt+↑ (Backspace in the list goes up) |
+| Generate Web URL (pre-signed link) | Ctrl+W |
 | Search / clear · Edit the path · Help | Ctrl+F / Esc · Alt+D · F1 |
 
 ## Build your own Storiva.exe (build.bat)
@@ -247,9 +261,9 @@ To support another storage provider, implement `Storiva.Core.Remote.IObjectStora
 
 ## Testing status
 
-- **315 unit tests** (313 run, 2 optional MinIO/AWS integration tests skipped unless configured). They run on every push in GitHub Actions and never call external services.
+- **459 unit tests** (457 run, 2 optional MinIO/AWS integration tests skipped unless configured). They run on every push in GitHub Actions and never call external services.
 - The real AWS SDK is exercised against the project's **fake S3 server on 127.0.0.1**, including TLS with an untrusted certificate. The fake server checks the access key ID but does not validate signatures.
-- A **UI smoke test** drives the real window (layout, menus, dialogs, themes, and connect / list / upload / download / copy / delete / tags / disconnect against the fake server).
+- A **UI smoke test** with 149 checks drives the real window (layout, menus, dialogs, themes, and connect / list / upload / drag and drop / download / copy / delete / tags / pre-signed links / remembered layout / disconnect against the fake server).
 - Against a **real MinIO server**, only the read-only connection test has been run so far (result: connected). Write operations have not yet been verified on a real MinIO or on AWS. To run the integration tests on your own test environment, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Documentation

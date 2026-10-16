@@ -108,6 +108,17 @@ internal static class ScreenshotTour
                 await Settle(() => true);
                 Save(form, "storiva-main-light.png");
 
+                using (var share = form.CreateShareLinkDialogForSelection())
+                {
+                    if (share is not null)
+                    {
+                        share.Show(form);
+                        await Settle(() => true, 1000);
+                        Save(share, "storiva-share-link.png");
+                        share.Close();
+                    }
+                }
+
                 form.ApplyThemePreference(ThemePreference.Dark);
                 form.SubmitPathText("/example-website/downloads/");
                 await Settle(() => !form.IsListing && form.VisibleNames.Contains("catalog-2026.pdf"));

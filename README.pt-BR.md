@@ -66,6 +66,7 @@
 - Listagens paginadas (**Load more**), caminho em *breadcrumb*, voltar, avançar, subir e campo de caminho editável.
 - Pesquisa local, filtro por tipo e ordenação em todas as colunas.
 - Favoritos (*bookmarks*) de buckets e pastas.
+- **Arrastar e soltar** arquivos e pastas do Explorer do Windows na lista de objetos (envia para a pasta atual) ou num bucket do painel esquerdo.
 - Nomes de objeto com caracteres incomuns são preservados exatamente.
 
 ### Operações
@@ -77,7 +78,17 @@ Todas rodam na aba **Tasks**, com progresso real, cancelamento e nova tentativa:
 - criar pasta, excluir, copiar, recortar e colar (mover), renomear e trocar a storage class;
 - criar e excluir buckets, adicionar um bucket externo pelo nome e editar o versionamento.
 
+As transferências em andamento mostram a **velocidade e o tempo restante** ("4.2 MB/s · 12 s left"); as concluídas mostram a duração e a velocidade média. Depois de uma queda de rede, limitação de taxa ou erro do servidor, o objeto é **enviado ou baixado de novo automaticamente** (até 3 tentativas, com 2 s e 8 s de espera; nunca em erros de credencial ou permissão), e o download recomeça do zero no arquivo parcial.
+
 Toda exclusão pede confirmação. Um bucket só pode ser excluído quando está vazio: o Storiva nunca exclui um bucket de forma recursiva.
+
+### Compartilhamento
+
+- **Files › Generate Web URL..** (Ctrl+W): um **link temporário** (pré-assinado) para os arquivos selecionados, válido por 15 min, 1 h, 24 h ou 7 dias. Quem tiver o link baixa o arquivo até ele expirar, sem conta. O link é calculado no seu computador pelo AWS SDK (nada é enviado ao servidor), nunca vai para o Event log nem é salvo, e o Copy pede ao Windows para não guardá-lo no histórico da área de transferência.
+- **Buckets › Generate Web URLs..**: links para todos os arquivos de um bucket (até 1.000).
+- Clique direito › **Copy S3 URI** (`s3://bucket/chave`) e **Copy Object URL** (o endereço HTTPS simples, que só abre para objetos públicos).
+
+![Diálogo Generate Web URL com um link pré-assinado de uma hora](docs/images/storiva-share-link.png)
 
 ### Abas de detalhes
 
@@ -95,6 +106,7 @@ Toda exclusão pede confirmação. Um bucket só pode ser excluído quando está
 
 - Temas **Claro, Escuro e Sistema**. O *Sistema* acompanha a configuração do Windows ao vivo, inclusive a barra de título e as barras de rolagem.
 - Suporte a High DPI (PerMonitorV2), atalhos de teclado para os comandos principais e nomes acessíveis nos controles.
+- Lembra o tamanho e a posição da janela, o tamanho dos painéis e a aba selecionada. A última conexão usada aparece primeiro no painel *Not connected*; o Storiva continua nunca se conectando sozinho.
 - Ícones do [Lucide](https://lucide.dev) e ícone do aplicativo original.
 
 ![Options › Interface: tema e opções de layout](docs/images/storiva-options-interface.png)
@@ -159,6 +171,7 @@ O Storiva **não tem telemetria, análise de uso, envio de relatórios de erro n
 - Endpoints `http://` sem criptografia exigem consentimento explícito em cada conexão e mostram um aviso.
 - Os segredos ficam separados das configurações, cifrados com DPAPI, e nunca vão para logs, mensagens de erro, arquivos JSON ou linha de comando.
 - Ações destrutivas pedem confirmação; buckets nunca são excluídos de forma recursiva.
+- Os nomes dos arquivos baixados são higienizados: nada sai da pasta escolhida, nomes reservados do Windows (`CON`, `COM1`…) são evitados e caracteres Unicode de direção de texto, que poderiam disfarçar uma extensão (`….exe` aparecendo como `….pdf`), são substituídos.
 - As requisições S3 passam apenas pelo [AWS SDK for .NET](https://github.com/aws/aws-sdk-net) oficial; o Storiva não tem assinatura de requisições escrita à mão.
 
 Detalhes e limites: [docs/CREDENTIAL_SECURITY.md](docs/CREDENTIAL_SECURITY.md). Para relatar uma vulnerabilidade, veja [SECURITY.md](SECURITY.md).
@@ -180,6 +193,7 @@ Quando o mesmo atalho existe em **Files** e em **Buckets**, o painel com o foco 
 | Add External Bucket / Edit Versioning | Ctrl+E / Ctrl+Shift+V |
 | Options | Alt+O |
 | Voltar / Avançar / Subir | Alt+← / Alt+→ / Alt+↑ (Backspace na lista sobe um nível) |
+| Generate Web URL (link temporário) | Ctrl+W |
 | Pesquisar / limpar · Editar o caminho · Ajuda | Ctrl+F / Esc · Alt+D · F1 |
 
 ## Compile o seu próprio Storiva.exe (build.bat)
@@ -247,9 +261,9 @@ Para outro provedor de armazenamento, implemente `Storiva.Core.Remote.IObjectSto
 
 ## Situação dos testes
 
-- **315 testes unitários** (313 executados; 2 testes de integração opcionais com MinIO/AWS ficam ignorados até serem configurados). Rodam a cada push no GitHub Actions e nunca chamam serviços externos.
+- **459 testes unitários** (457 executados; 2 testes de integração opcionais com MinIO/AWS ficam ignorados até serem configurados). Rodam a cada push no GitHub Actions e nunca chamam serviços externos.
 - O AWS SDK real é exercitado contra o **servidor S3 falso do projeto, em 127.0.0.1**, inclusive TLS com certificado não confiável. O servidor falso confere o ID da chave, mas não valida as assinaturas.
-- Um **smoke test da interface** opera a janela real: layout, menus, diálogos, temas e, contra o servidor falso, conectar, listar, enviar, baixar, copiar, excluir, tags e desconectar.
+- Um **smoke test da interface**, com 149 verificações, opera a janela real: layout, menus, diálogos, temas e, contra o servidor falso, conectar, listar, enviar, arrastar e soltar, baixar, copiar, excluir, tags, links temporários, janela lembrada e desconectar.
 - Contra um **MinIO real**, até agora rodou apenas o teste de conexão, que é somente leitura (resultado: conectado). As operações de escrita ainda não foram verificadas num MinIO real nem na AWS. Para rodar os testes de integração no seu ambiente de teste, veja [docs/TESTING.md](docs/TESTING.md).
 
 ## Documentação

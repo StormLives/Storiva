@@ -12,7 +12,7 @@
     <Authors>Storiva contributors</Authors>
     <Copyright>Copyright (c) 2026 Storiva contributors. MIT License.</Copyright>
     <Description>Windows desktop client for Amazon S3 and S3-compatible object storage (MinIO and others).</Description>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 </Project>
