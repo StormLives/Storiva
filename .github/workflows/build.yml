@@ -28,7 +28,7 @@ jobs:
       unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -91,7 +91,7 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # --- Code signing (enable after SignPath Foundation approves the project) ---------------------------------
       # 1. Add the repository secret SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID,
