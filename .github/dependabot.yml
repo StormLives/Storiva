@@ -1,0 +1,26 @@
+# Weekly pull requests for NuGet packages and GitHub Actions. Every PR runs the build workflow (build + tests)
+# and is merged only after review. Major versions are excluded where Storiva deliberately stays on a series.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      aws-sdk:
+        patterns: ["AWSSDK.*"]
+      test-packages:
+        patterns: ["xunit*", "Microsoft.NET.Test.Sdk"]
+    ignore:
+      - dependency-name: "xunit"
+        update-types: ["version-update:semver-major"]   # stay on xUnit v2
+      - dependency-name: "AWSSDK.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.Security.Cryptography.ProtectedData"
+        update-types: ["version-update:semver-major"]   # keep the .NET 8 series
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
