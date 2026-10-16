@@ -10,3 +10,7 @@
 *.ico binary
 *.jpg binary
 *.gif binary
+
+# Batch files must keep CRLF to run correctly in cmd.exe
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -18,11 +18,15 @@
   <ItemGroup>
     <EmbeddedResource Include="Assets\Icons\Lucide\*.svg" LogicalName="Storiva.Icons.%(Filename).svg" />
     <EmbeddedResource Include="Assets\Brand\storiva.ico" LogicalName="Storiva.Brand.storiva.ico" />
-    <None Include="Assets\Icons\Lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" Link="licenses\lucide-LICENSE.txt" />
-    <None Include="..\..\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
+    <!-- Shown by Help › About; embedded so the single-file portable exe carries it as well. -->
+    <EmbeddedResource Include="..\..\THIRD_PARTY_NOTICES.md" LogicalName="Storiva.ThirdPartyNotices.md" />
+    <!-- License texts next to the executable. ExcludeFromSingleFile keeps them as plain files beside a single-file build. -->
+    <None Include="Assets\Icons\Lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" Link="licenses\lucide-LICENSE.txt" ExcludeFromSingleFile="true" />
+    <None Include="..\..\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" ExcludeFromSingleFile="true" />
+    <None Include="..\..\LICENSE" CopyToOutputDirectory="PreserveNewest" Link="LICENSE.txt" ExcludeFromSingleFile="true" />
     <!-- AWS SDK for .NET (Apache-2.0) and System.Security.Cryptography.ProtectedData (MIT): license texts shipped with the app. -->
-    <None Include="Assets\Licenses\Apache-2.0.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\AWSSDK-Apache-2.0.txt" />
-    <None Include="Assets\Licenses\dotnet-ProtectedData-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\ProtectedData-MIT.txt" />
+    <None Include="Assets\Licenses\Apache-2.0.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\AWSSDK-Apache-2.0.txt" ExcludeFromSingleFile="true" />
+    <None Include="Assets\Licenses\dotnet-ProtectedData-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\ProtectedData-MIT.txt" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <ItemGroup>

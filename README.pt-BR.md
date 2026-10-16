@@ -101,18 +101,23 @@ Toda exclusão pede confirmação. Um bucket só pode ser excluído quando está
 
 ## Baixar e instalar
 
-1. Instale o **[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** (x64), se ainda não tiver.
-2. Baixe `Storiva-vX.Y.Z-win-x64.zip` na página [Releases](https://github.com/StormLives/Storiva/releases).
-3. Extraia numa pasta de sua escolha e execute `Storiva.exe`.
+Baixe a versão mais recente na página [Releases](https://github.com/StormLives/Storiva/releases) (Windows 10 ou 11 de 64 bits):
 
-O Storiva não precisa de permissão de administrador, não instala serviços e não altera configurações do sistema.
+| Arquivo | O que é |
+| --- | --- |
+| `Storiva-vX.Y.Z-win-x64-setup.exe` | **Instalador (recomendado).** Instala para o seu usuário sem permissão de administrador, cria atalho no Menu Iniciar e pode ser desinstalado em Configurações › Aplicativos. Não precisa instalar mais nada. |
+| `Storiva-vX.Y.Z-win-x64-portable.zip` | **Portátil.** Extraia em qualquer pasta (até num pendrive) e execute `Storiva.exe`. Não precisa instalar mais nada. |
+| `Storiva-vX.Y.Z-win-x64.zip` | Versão pequena, para quem já tem o [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (x64). |
 
-> Enquanto o executável não for assinado, o SmartScreen do Windows pode avisar que o editor é desconhecido. As versões são compiladas apenas pelo workflow do GitHub Actions deste repositório, a partir do código marcado com a tag. Veja a [Política de assinatura de código](#política-de-assinatura-de-código).
+O Storiva não instala serviços e não altera configurações do sistema.
+
+> **Ainda sem assinatura digital.** O SmartScreen do Windows pode mostrar "O Windows protegeu o computador", porque o editor é desconhecido: clique em **Mais informações › Executar assim mesmo**. Os arquivos das releases são gerados apenas pelo workflow do GitHub Actions deste repositório, a partir do código da tag (veja a [Política de assinatura de código](#política-de-assinatura-de-código)). Se preferir, [compile o seu próprio Storiva.exe](#compile-o-seu-próprio-storivaexe-buildbat) a partir do código, em um passo.
 
 ### Desinstalar
 
-1. Apague a pasta onde você extraiu o Storiva.
-2. Opcional: apague as conexões e configurações salvas, em `%LOCALAPPDATA%\Storiva`. Você também pode remover cada conexão antes, em **Accounts › Manage Accounts.. › Remove**.
+- **Instalador:** Configurações › Aplicativos › Aplicativos instalados › Storiva › Desinstalar.
+- **Portátil ou zip:** apague a pasta onde você extraiu.
+- Nos dois casos, as conexões e configurações salvas ficam em `%LOCALAPPDATA%\Storiva`, então uma reinstalação as mantém. Para apagá-las também, apague essa pasta (ou remova cada conexão antes, em **Accounts › Manage Accounts.. › Remove**).
 
 ## Primeiros passos
 
@@ -177,6 +182,17 @@ Quando o mesmo atalho existe em **Files** e em **Buckets**, o painel com o foco 
 | Voltar / Avançar / Subir | Alt+← / Alt+→ / Alt+↑ (Backspace na lista sobe um nível) |
 | Pesquisar / limpar · Editar o caminho · Ajuda | Ctrl+F / Esc · Alt+D · F1 |
 
+## Compile o seu próprio Storiva.exe (build.bat)
+
+Qualquer pessoa pode gerar o mesmo `Storiva.exe` portátil a partir do código, sem Visual Studio:
+
+1. Instale o **[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)** (8.0.426 ou mais novo, x64).
+2. Baixe o código: **Code › Download ZIP** no GitHub (ou `git clone https://github.com/StormLives/Storiva.git`) e extraia.
+3. Dê dois cliques em **`build.bat`** (ou rode `build.bat test` num terminal para rodar os testes antes).
+4. O executável fica em **`dist\Storiva.exe`**: um arquivo só, que roda sem instalar mais nada.
+
+Um arquivo compilado por você não vem da internet, então o SmartScreen não mostra o aviso de editor desconhecido para ele.
+
 ## Compilar a partir do código-fonte
 
 Requisitos: Windows 10 ou 11 (x64) e o **.NET 8 SDK** 8.0.426 ou mais novo na faixa 8.0 (veja `global.json`).
@@ -192,7 +208,12 @@ dotnet run --project src\Storiva.App -c Release
 
 # Pasta com o Storiva.exe (depende do .NET 8 Desktop Runtime para rodar)
 dotnet publish src\Storiva.App -c Release -o artifacts\release
+
+# Storiva.exe portátil, arquivo único com o .NET dentro (o que o build.bat faz)
+dotnet publish src\Storiva.App -c Release -p:PublishProfile=win-x64-portable -p:DebugType=none -o dist
 ```
+
+O instalador é gerado com o [Inno Setup 6](https://jrsoftware.org/isinfo.php), a partir de `installer\Storiva.iss`, pelo workflow de release.
 
 Validação completa (recompila Debug e Release do zero, roda todos os testes, publica e executa o smoke test da interface contra um servidor S3 falso em 127.0.0.1):
 
@@ -216,8 +237,10 @@ tests/
   Storiva.Tests/           Testes xUnit (sem chamadas externas)
   Storiva.FakeS3/          Servidor S3 falso em 127.0.0.1 para os testes, o smoke test e as capturas (não é distribuído)
 tools/                     validate.ps1, capture-readme-screenshots.ps1, capture-window.ps1, generate-brand-icon.ps1
+installer/                 Script do Inno Setup para o instalador do Windows
+build.bat                  Gera o dist\Storiva.exe portátil em um passo
 docs/                      Configuração de conexões, segurança das credenciais, temas, testes, arquitetura, licenças
-.github/workflows/         CI: build, testes e publicação; release em rascunho nas tags de versão
+.github/workflows/         CI: build, testes e publicação; release em rascunho com instalador, portátil e zip nas tags de versão
 ```
 
 Para outro provedor de armazenamento, implemente `Storiva.Core.Remote.IObjectStorageClient` e a sua fábrica, e registre-os em `Program.CreateMainForm`.

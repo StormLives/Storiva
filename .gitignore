@@ -27,3 +27,6 @@ secrets/
 *.p12
 *.snk
 .env
+
+# build.bat output
+dist/

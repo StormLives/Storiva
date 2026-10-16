@@ -101,18 +101,23 @@ Deletes always ask for confirmation. Deleting a bucket only works when it is emp
 
 ## Download and install
 
-1. Install the **[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** (x64), if you do not have it yet.
-2. Download `Storiva-vX.Y.Z-win-x64.zip` from the [Releases](https://github.com/StormLives/Storiva/releases) page.
-3. Extract it to a folder of your choice and run `Storiva.exe`.
+Get the latest version from the [Releases](https://github.com/StormLives/Storiva/releases) page (64-bit Windows 10 or 11):
 
-Storiva does not need administrator rights, does not install services and does not change system settings.
+| File | What it is |
+| --- | --- |
+| `Storiva-vX.Y.Z-win-x64-setup.exe` | **Installer (recommended).** Installs for your user without administrator rights, adds a Start menu shortcut and can be uninstalled from Settings › Apps. Nothing else to install. |
+| `Storiva-vX.Y.Z-win-x64-portable.zip` | **Portable.** Extract anywhere (even a USB drive) and run `Storiva.exe`. Nothing else to install. |
+| `Storiva-vX.Y.Z-win-x64.zip` | Small build for computers that already have the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (x64). |
 
-> Until code signing is in place, Windows SmartScreen may warn that the publisher is unknown. Releases are built only by the GitHub Actions workflow of this repository from the tagged source; see [Code signing policy](#code-signing-policy).
+Storiva does not install services and does not change system settings.
+
+> **Not code-signed yet.** Windows SmartScreen may say "Windows protected your PC" because the publisher is unknown: click **More info › Run anyway**. Release files are built only by the GitHub Actions workflow of this repository from the tagged source (see [Code signing policy](#code-signing-policy)). If you prefer, [build your own Storiva.exe](#build-your-own-storivaexe-buildbat) from the source in one step.
 
 ### Uninstall
 
-1. Delete the folder where you extracted Storiva.
-2. Optional: delete your saved connections and settings, in `%LOCALAPPDATA%\Storiva`. You can also remove each connection first in **Accounts › Manage Accounts.. › Remove**.
+- **Installer:** Settings › Apps › Installed apps › Storiva › Uninstall.
+- **Portable or zip:** delete the folder where you extracted it.
+- Your saved connections and settings stay in `%LOCALAPPDATA%\Storiva` in both cases, so a reinstall keeps them. To remove them too, delete that folder (or remove each connection first in **Accounts › Manage Accounts.. › Remove**).
 
 ## Getting started
 
@@ -177,6 +182,17 @@ When the same shortcut exists in **Files** and **Buckets**, the focused pane dec
 | Back / Forward / Up | Alt+← / Alt+→ / Alt+↑ (Backspace in the list goes up) |
 | Search / clear · Edit the path · Help | Ctrl+F / Esc · Alt+D · F1 |
 
+## Build your own Storiva.exe (build.bat)
+
+Anyone can build the same portable `Storiva.exe` from the source, without Visual Studio:
+
+1. Install the **[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)** (8.0.426 or newer, x64).
+2. Download the source: **Code › Download ZIP** on GitHub (or `git clone https://github.com/StormLives/Storiva.git`) and extract it.
+3. Double-click **`build.bat`** (or run `build.bat test` in a terminal to run the unit tests first).
+4. Your executable is in **`dist\Storiva.exe`**: one self-contained file, nothing else to install to run it.
+
+A file you build yourself does not come from the internet, so Windows SmartScreen does not show the unknown-publisher warning for it.
+
 ## Build from source
 
 Requirements: Windows 10 or 11 (x64) and the **.NET 8 SDK** 8.0.426 or later in the 8.0 band (see `global.json`).
@@ -192,7 +208,12 @@ dotnet run --project src\Storiva.App -c Release
 
 # Folder with Storiva.exe (framework-dependent: needs the .NET 8 Desktop Runtime to run)
 dotnet publish src\Storiva.App -c Release -o artifacts\release
+
+# Portable single-file Storiva.exe with the .NET runtime inside (what build.bat does)
+dotnet publish src\Storiva.App -c Release -p:PublishProfile=win-x64-portable -p:DebugType=none -o dist
 ```
+
+The installer is built with [Inno Setup 6](https://jrsoftware.org/isinfo.php) from `installer\Storiva.iss` by the release workflow.
 
 Full validation (clean rebuilds of Debug and Release, all tests, publish, and a UI smoke test of the published exe against a fake S3 server on 127.0.0.1):
 
@@ -216,8 +237,10 @@ tests/
   Storiva.Tests/           xUnit tests (no external calls)
   Storiva.FakeS3/          Fake S3 server on 127.0.0.1 for tests, the smoke test and the screenshots (not shipped)
 tools/                     validate.ps1, capture-readme-screenshots.ps1, capture-window.ps1, generate-brand-icon.ps1
+installer/                 Inno Setup script for the Windows installer
+build.bat                  One-step build of the portable dist\Storiva.exe
 docs/                      Connection setup, credential security, themes, testing, architecture, asset licenses
-.github/workflows/         CI: build, test, publish; draft release on version tags
+.github/workflows/         CI: build, test, publish; draft release with installer, portable and zip on version tags
 ```
 
 To support another storage provider, implement `Storiva.Core.Remote.IObjectStorageClient` and its factory, and register it in `Program.CreateMainForm`.

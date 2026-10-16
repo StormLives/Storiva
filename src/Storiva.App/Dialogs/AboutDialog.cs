@@ -42,8 +42,8 @@ internal sealed class AboutDialog : Form
         var details = new Label
         {
             Text = $"Version {version}\r\n" +
-                   "Open source under the MIT License. No telemetry: Storiva only connects to the servers you configure.\r\n" +
-                   "Client for AWS S3 and S3-compatible servers (MinIO). Credentials are protected with Windows DPAPI.",
+                   "Client for Amazon S3 and S3-compatible servers (MinIO).\r\n" +
+                   "MIT License · no telemetry · credentials protected with DPAPI.",
             AutoSize = true,
             MaximumSize = new Size(430, 0),
             Location = new Point(104, 58),
@@ -97,8 +97,21 @@ internal sealed class AboutDialog : Form
         }
     }
 
+    /// <summary>
+    /// The notices are embedded in the assembly, so the single-file portable exe shows them too; the copy next to
+    /// the executable (zip and installer builds) is the fallback.
+    /// </summary>
     private static string ReadNotices()
     {
+        using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Storiva.ThirdPartyNotices.md"))
+        {
+            if (stream is not null)
+            {
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd().ReplaceLineEndings("\r\n");
+            }
+        }
+
         var file = Path.Combine(AppContext.BaseDirectory, "THIRD_PARTY_NOTICES.md");
         try
         {

@@ -1,5 +1,8 @@
 # Builds, tests and publishes Storiva on every push and pull request.
-# A tag "vX.Y.Z" (matching <Version> in Directory.Build.props) also creates a DRAFT GitHub release with the zip.
+# A tag "vX.Y.Z" (matching <Version> in Directory.Build.props) also creates a DRAFT GitHub release with:
+#   Storiva-vX.Y.Z-win-x64-setup.exe     installer (per user, no admin, includes the .NET runtime)
+#   Storiva-vX.Y.Z-win-x64-portable.zip  portable Storiva.exe (includes the .NET runtime) + license files
+#   Storiva-vX.Y.Z-win-x64.zip           small framework-dependent build (needs the .NET 8 Desktop Runtime)
 # Code signing (SignPath Foundation) is prepared below but disabled until the project is accepted; see README.md,
 # section "Code signing policy".
 name: build
@@ -21,12 +24,30 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Read the project version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Select-Xml -Path Directory.Build.props -XPath '//Version').Node.InnerText
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "Project version: $version"
+
+      - name: Check that a release tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.TrimStart('v')
+          if ('${{ steps.version.outputs.version }}' -ne $tag) { throw "Tag $env:GITHUB_REF_NAME does not match <Version>${{ steps.version.outputs.version }}</Version> in Directory.Build.props" }
 
       - name: Restore
         run: dotnet restore Storiva.sln
@@ -40,16 +61,11 @@ jobs:
         run: dotnet test Storiva.sln -c Release --no-build --logger trx --results-directory TestResults
 
       - name: Publish (framework-dependent, win-x64)
-        run: dotnet publish src/Storiva.App/Storiva.App.csproj -c Release --no-restore -o publish
+        run: dotnet publish src/Storiva.App/Storiva.App.csproj -c Release --no-restore -o publish/framework-dependent
 
-      - name: Check that a release tag matches the project version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          [xml]$props = Get-Content Directory.Build.props
-          $version = $props.Project.PropertyGroup.Version
-          $tag = $env:GITHUB_REF_NAME.TrimStart('v')
-          if ($version -ne $tag) { throw "Tag $env:GITHUB_REF_NAME does not match <Version>$version</Version> in Directory.Build.props" }
+      # Same profile as build.bat: one self-contained Storiva.exe.
+      - name: Publish (portable single-file, self-contained, win-x64)
+        run: dotnet publish src/Storiva.App/Storiva.App.csproj -c Release -p:PublishProfile=win-x64-portable -p:DebugType=none -o publish/portable
 
       - name: Upload test results
         if: always()
@@ -66,20 +82,23 @@ jobs:
           path: publish
           if-no-files-found: error
 
-    outputs:
-      unsigned-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
-
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+
       # --- Code signing (enable after SignPath Foundation approves the project) ---------------------------------
       # 1. Add the repository secret SIGNPATH_API_TOKEN and the variables SIGNPATH_ORGANIZATION_ID,
       #    SIGNPATH_PROJECT_SLUG and SIGNPATH_SIGNING_POLICY_SLUG given by SignPath.
-      # 2. Uncomment the step below and replace the download step with the signed directory.
+      # 2. Uncomment the step below and replace the download step with the signed directory. The signing policy must
+      #    cover publish/portable/Storiva.exe and publish/framework-dependent/*.exe|*.dll; sign the installer with a
+      #    second request after "Build the installer".
       # Each signing request is approved manually in SignPath before the signed files come back.
       #
       # - name: Sign with SignPath
@@ -91,21 +110,54 @@ jobs:
       #     signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
       #     github-artifact-id: ${{ needs.build.outputs.unsigned-artifact-id }}
       #     wait-for-completion: true
-      #     output-artifact-directory: storiva
+      #     output-artifact-directory: publish
       # -----------------------------------------------------------------------------------------------------------
 
       - name: Download build
         uses: actions/download-artifact@v4
         with:
           name: storiva-win-x64
-          path: storiva
+          path: publish
 
-      - name: Zip
+      - name: Install Inno Setup
         shell: pwsh
-        run: Compress-Archive -Path storiva/* -DestinationPath "Storiva-$env:GITHUB_REF_NAME-win-x64.zip"
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'Inno Setup was not found after installing it' }
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          & $env:ISCC "/DAppVersion=$env:VERSION" "/DSourceDir=$PWD\publish\portable" "/O$PWD\out" installer\Storiva.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+
+      - name: Zip the portable and framework-dependent builds
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/portable/* -DestinationPath "out/Storiva-v$env:VERSION-win-x64-portable.zip"
+          Compress-Archive -Path publish/framework-dependent/* -DestinationPath "out/Storiva-v$env:VERSION-win-x64.zip"
+          Get-ChildItem out | ForEach-Object { "{0}  {1:N1} MB  SHA-256 {2}" -f $_.Name, ($_.Length / 1MB), (Get-FileHash $_.FullName -Algorithm SHA256).Hash }
 
       - name: Create draft release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME "Storiva-$env:GITHUB_REF_NAME-win-x64.zip" --draft --generate-notes --title "Storiva $env:GITHUB_REF_NAME" --repo $env:GITHUB_REPOSITORY
+        run: |
+          $notes = @"
+          ## Downloads
+
+          | File | What it is |
+          | --- | --- |
+          | ``Storiva-v$env:VERSION-win-x64-setup.exe`` | **Installer (recommended).** Installs for your user, no administrator rights, Start menu shortcut, uninstall from Settings > Apps. Nothing else to install. |
+          | ``Storiva-v$env:VERSION-win-x64-portable.zip`` | **Portable.** Extract and run ``Storiva.exe``. Nothing else to install. |
+          | ``Storiva-v$env:VERSION-win-x64.zip`` | Small build for computers that already have the [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). |
+
+          These files are not code-signed yet, so Windows SmartScreen may warn about an unknown publisher (More info > Run anyway). They are built by GitHub Actions from the tagged source. You can also build Storiva yourself with ``build.bat`` (see the README).
+          "@
+          gh release create $env:GITHUB_REF_NAME (Get-ChildItem out).FullName --draft --generate-notes --notes $notes --title "Storiva $env:GITHUB_REF_NAME" --repo $env:GITHUB_REPOSITORY
