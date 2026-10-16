@@ -91,6 +91,10 @@ public sealed class S3ClientFactory : IObjectStorageClientFactory
         var config = new AmazonS3Config
         {
             ForcePathStyle = profile.ForcePathStyle,
+            // Each HTTP request: up to 3 attempts with the SDK's jittered backoff for throttling, 5xx and dropped
+            // connections. Set explicitly so AWS_RETRY_MODE / AWS_MAX_ATTEMPTS or the shared config file cannot change
+            // it; whole-object retries after a longer pause are TransferRetry's (Storiva.Core), on top of this.
+            RetryMode = RequestRetryMode.Standard,
             MaxErrorRetry = 2,
         };
 

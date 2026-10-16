@@ -29,6 +29,12 @@ public static class S3ErrorMapper
             return already.Error;
         }
 
+        // An HTTP timeout surfaces as a TaskCanceledException around a TimeoutException: not a user cancellation.
+        if (Find<TimeoutException>(exception) is not null)
+        {
+            return new StorageError(StorageErrorKind.EndpointUnreachable, $"{operation} timed out. The endpoint did not answer in time.");
+        }
+
         if (exception is OperationCanceledException)
         {
             return new StorageError(StorageErrorKind.Canceled, $"{operation} was canceled.");
@@ -54,15 +60,17 @@ public static class S3ErrorMapper
                 $"{operation} failed: the endpoint could not be reached ({socket.SocketErrorCode}). Check the address, the port, the network and any proxy or firewall.");
         }
 
+        if (Find<HttpIOException>(exception) is not null)
+        {
+            // The connection ended while the body was being read (e.g. a network drop in the middle of a download).
+            return new StorageError(StorageErrorKind.EndpointUnreachable,
+                $"{operation} failed: the connection was interrupted before the transfer finished. Check the network and try again.");
+        }
+
         if (Find<HttpRequestException>(exception) is { } http)
         {
             return new StorageError(StorageErrorKind.EndpointUnreachable,
                 $"{operation} failed: no response from the endpoint. Check the address, the port, the network and any proxy or firewall. Details: {SecretRedactor.Redact(http.Message, credentials)}");
-        }
-
-        if (Find<TimeoutException>(exception) is not null || exception is TaskCanceledException)
-        {
-            return new StorageError(StorageErrorKind.EndpointUnreachable, $"{operation} timed out. The endpoint did not answer in time.");
         }
 
         if (exception is AmazonClientException client)

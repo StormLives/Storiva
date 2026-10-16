@@ -27,6 +27,12 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
 
     public StorageErrorKind? FailEverything { get; set; }
 
+    /// <summary>Key → number of the next uploads/downloads of it that fail with a given (e.g. transient) error.</summary>
+    public Dictionary<string, (int Count, StorageErrorKind Kind)> FailTransfers { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Key → number of the next downloads of it that drop after writing half of the content.</summary>
+    public Dictionary<string, int> InterruptDownloads { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, IReadOnlyList<Tag>> TagsByKey { get; } = new(StringComparer.Ordinal);
 
     public VersioningStatus Versioning { get; set; } = VersioningStatus.Disabled;
@@ -52,6 +58,15 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
     public IReadOnlyList<string> Keys(string bucket) => _buckets.TryGetValue(bucket, out var o) ? o.Keys.ToList() : [];
 
     public byte[]? Get(string bucket, string key) => _buckets.TryGetValue(bucket, out var o) && o.TryGetValue(key, out var c) ? c : null;
+
+    private void FailTransfer(string key)
+    {
+        if (FailTransfers.TryGetValue(key, out var failure) && failure.Count > 0)
+        {
+            FailTransfers[key] = (failure.Count - 1, failure.Kind);
+            throw new StorageOperationException(new StorageError(failure.Kind, $"Transfer of {key} failed ({failure.Kind})", StatusCode: failure.Kind == StorageErrorKind.ServerError ? 500 : null));
+        }
+    }
 
     private void Gate(string call)
     {
@@ -157,6 +172,7 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
     public Task UploadObjectAsync(string bucket, string key, string localPath, string? contentType, IProgress<TransferProgress>? progress, CancellationToken cancellationToken)
     {
         Gate("Upload " + key);
+        FailTransfer(key);
         var content = File.ReadAllBytes(localPath);
         progress?.Report(new TransferProgress(content.Length / 2, content.Length));
         Put(bucket, key, content);
@@ -167,10 +183,17 @@ internal sealed class InMemoryObjectStorageClient : IObjectStorageClient
     public async Task DownloadObjectAsync(string bucket, string key, Stream destination, IProgress<TransferProgress>? progress, CancellationToken cancellationToken)
     {
         Gate("Download " + key);
+        FailTransfer(key);
         var content = Bucket(bucket).TryGetValue(key, out var c) ? c : throw new StorageOperationException(new StorageError(StorageErrorKind.NotFound, "No such key", "NoSuchKey", 404));
         var half = content.Length / 2;
         await destination.WriteAsync(content.AsMemory(0, half), cancellationToken);
         progress?.Report(new TransferProgress(half, content.Length));
+        if (InterruptDownloads.TryGetValue(key, out var drops) && drops > 0)
+        {
+            InterruptDownloads[key] = drops - 1;
+            throw new StorageOperationException(new StorageError(StorageErrorKind.EndpointUnreachable, "Downloading failed: the connection was interrupted"));
+        }
+
         OnDownloadChunk?.Invoke();
         cancellationToken.ThrowIfCancellationRequested();
         await destination.WriteAsync(content.AsMemory(half), cancellationToken);

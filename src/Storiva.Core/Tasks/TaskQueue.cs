@@ -133,11 +133,18 @@ public sealed class TaskQueue
 
     internal int RunningOperations => _tasks.Count(t => t.State == TransferState.Running);
 
-    internal void MarkRunning(TransferTask task, string message)
+    internal void MarkRunning(TransferTask task, string message, DateTimeOffset? at = null)
     {
         task.CancelRequested = false;
         task.Progress = 0;
         task.Processed = 0;
+        task.StartedAt = at;
+        task.Rate.Reset();
+        if (at is { } start && TransferTask.MeasuresBytes(task.Kind))
+        {
+            task.Rate.Sample(0, start); // the speed is measured from the start, connection setup included
+        }
+
         Set(task, TransferState.Running, message);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -147,13 +154,28 @@ public sealed class TaskQueue
         task.CancelRequested = false;
         task.Progress = 0;
         task.Processed = 0;
+        task.Rate.Reset();
         Set(task, TransferState.Queued, message);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Progress from the operation: a percentage only when the total is known, never invented.</summary>
-    internal void ReportProgress(TransferTask task, long processed, long? total, string? message = null)
+    /// <summary>
+    /// Progress from the operation: a percentage only when the total is known, never invented. With
+    /// <paramref name="at"/>, uploads and downloads also update their smoothed speed; a new
+    /// <paramref name="message"/> (e.g. a retry notice) starts a new speed measurement.
+    /// </summary>
+    internal void ReportProgress(TransferTask task, long processed, long? total, string? message = null, DateTimeOffset? at = null)
     {
+        if (message is not null)
+        {
+            task.Rate.Reset();
+        }
+
+        if (at is { } now && TransferTask.MeasuresBytes(task.Kind))
+        {
+            task.Rate.Sample(processed, now);
+        }
+
         task.Processed = processed;
         if (total is > 0)
         {

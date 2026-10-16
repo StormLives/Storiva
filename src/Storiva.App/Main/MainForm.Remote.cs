@@ -587,7 +587,7 @@ internal sealed partial class MainForm
             var key = prefix + name;
             StartRemoteOperation($"{location.ToDisplayString()}{name}", TransferKind.Upload, size, async (client, ctx) =>
             {
-                await client.UploadObjectAsync(bucket, key, file, FileTypes.ContentType(name), ctx.Progress, ctx.CancellationToken);
+                await RemoteOperations.UploadFileAsync(client, bucket, key, file, FileTypes.ContentType(name), ctx.Progress, ctx.CancellationToken);
                 return OperationOutcome.Done($"Uploaded {FileTypes.FormatSize(size)} to s3://{bucket}/{key}");
             }, location);
         }
